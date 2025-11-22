@@ -7,10 +7,11 @@ import PatientSearchPanel from "@/components/PatientSearchPanel";
 import TranscriptInputPanel from "@/components/TranscriptInputPanel";
 import ActionList from "@/components/ActionList";
 import AftercarePanel from "@/components/AftercarePanel";
-import { WorkflowProvider, useWorkflow } from "@/components/WorkflowContext";
+import { useSession } from "@/contexts/SessionContext";
 
 function HomeContent() {
-  const { allApproved, actions } = useWorkflow();
+  const { currentStep, approvedActions, suggestedActions } = useSession();
+  const allApproved = suggestedActions.length > 0 && suggestedActions.every((a) => a.status === "approved");
 
   return (
     <>
@@ -26,37 +27,35 @@ function HomeContent() {
         <WorkflowStepper />
 
         {/* Main content */}
-        <main className="flex-1 p-6 overflow-y-auto">
-          <div className="max-w-5xl mx-auto space-y-8">
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-6xl mx-auto px-6 py-6 space-y-8">
             {/* Upper Section: Patient Search + Transcript */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Left: Patient Search */}
-              <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-6 flex flex-col min-h-[500px]">
-                <PatientSearchPanel />
-              </div>
+              <PatientSearchPanel />
 
               {/* Right: Transcript Input */}
-              <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-6 flex flex-col min-h-[500px]">
-                <TranscriptInputPanel />
-              </div>
+              <TranscriptInputPanel />
             </div>
 
             {/* Lower Section: Draft Clinical Actions */}
-            <div>
-              <div className="mb-6">
-                <h1 className="text-2xl font-bold text-slate-900 mb-2">
-                  Draft Clinical Actions
-                </h1>
-                <p className="text-sm text-slate-600">
-                  AI-generated draft orders from the current consultation. Review and approve to send to Medplum EMR.
-                </p>
+            {currentStep >= 3 && (
+              <div>
+                <div className="mb-6">
+                  <h1 className="text-2xl font-semibold text-zinc-900 mb-2">
+                    Draft Clinical Actions
+                  </h1>
+                  <p className="text-sm text-zinc-600">
+                    AI-generated draft orders from the current consultation. Review and approve to send to Medplum EMR.
+                  </p>
+                </div>
+
+                <ActionList />
               </div>
+            )}
 
-              <ActionList />
-            </div>
-
-            {/* After-Care Section (shown when all actions approved) */}
-            {allApproved && actions.length > 0 && (
+            {/* After-Care Section (shown when on step 4) */}
+            {currentStep >= 4 && (
               <div>
                 <AftercarePanel />
               </div>
@@ -69,9 +68,5 @@ function HomeContent() {
 }
 
 export default function Home() {
-  return (
-    <WorkflowProvider>
-      <HomeContent />
-    </WorkflowProvider>
-  );
+  return <HomeContent />;
 }

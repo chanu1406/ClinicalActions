@@ -1,64 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, Eye, Send, Loader2, CheckCircle } from "lucide-react";
-import { useWorkflow } from "./WorkflowContext";
+import { Mail, Eye, Send, Loader2, CheckCircle, FileText, Sparkles } from "lucide-react";
+import { useSession } from "@/contexts/SessionContext";
 
 export default function AftercarePanel() {
-  const { selectedPatient, actions } = useWorkflow();
-  const [email, setEmail] = useState(selectedPatient?.email || "");
-  const [summary, setSummary] = useState(() => generateSummary());
+  const {
+    patient,
+    approvedActions,
+    aftercareSummary,
+    setAftercareSummary,
+    generateAftercare,
+    sendAftercare,
+    isLoading,
+    error,
+    clearError,
+  } = useSession();
+
+  const [email, setEmail] = useState(patient?.insurance || ""); // Using insurance field as email placeholder
   const [showPreview, setShowPreview] = useState(false);
-  const [isSending, setIsSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState(false);
 
-  function generateSummary(): string {
-    if (!selectedPatient || actions.length === 0) return "";
-
-    const approvedActions = actions.filter((a) => a.approved);
-    
-    let summaryText = `Dear ${selectedPatient.name.split(" ")[0]},\n\n`;
-    summaryText += `Thank you for your visit today. Here's a summary of our consultation:\n\n`;
-
-    const medications = approvedActions.filter((a) => a.type === "medication");
-    const services = approvedActions.filter((a) => a.type === "service");
-
-    if (medications.length > 0) {
-      summaryText += `MEDICATIONS:\n`;
-      medications.forEach((med) => {
-        summaryText += `• ${med.label}`;
-        if (med.details.instruction) {
-          summaryText += ` - ${med.details.instruction}`;
-        }
-        summaryText += `\n`;
-      });
-      summaryText += `\n`;
-    }
-
-    if (services.length > 0) {
-      summaryText += `TESTS & PROCEDURES:\n`;
-      services.forEach((svc) => {
-        summaryText += `• ${svc.label}`;
-        if (svc.details.reason) {
-          summaryText += ` - ${svc.details.reason}`;
-        }
-        summaryText += `\n`;
-      });
-      summaryText += `\n`;
-    }
-
-    summaryText += `NEXT STEPS:\n`;
-    summaryText += `• Please follow the medication instructions as prescribed\n`;
-    if (services.length > 0) {
-      summaryText += `• Complete the recommended tests at your earliest convenience\n`;
-    }
-    summaryText += `• Schedule a follow-up appointment in 4-6 weeks\n`;
-    summaryText += `• Contact us if you have any questions or concerns\n\n`;
-    summaryText += `If you experience any side effects or have questions about your treatment, please don't hesitate to reach out to our office.\n\n`;
-    summaryText += `Best regards,\nYour Healthcare Team`;
-
-    return summaryText;
-  }
+  const handleGenerate = async () => {
+    clearError();
+    await generateAftercare();
+  };
 
   const handleSendEmail = async () => {
     if (!email.trim()) {
@@ -66,137 +32,191 @@ export default function AftercarePanel() {
       return;
     }
 
-    setIsSending(true);
+    clearError();
     setSendSuccess(false);
+    await sendAftercare(email);
+    setSendSuccess(true);
 
-    try {
-      // TODO: Replace with real backend API call
-      // Example: POST /api/aftercare-email with { patientId, email, summary, actions }
-      // This will format and send the email via SendGrid, AWS SES, or similar
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      setSendSuccess(true);
-    } catch (error) {
-      alert("Failed to send email. Please try again.");
-    } finally {
-      setIsSending(false);
-    }
+    // Clear success message after 5 seconds
+    setTimeout(() => setSendSuccess(false), 5000);
   };
 
+  const hasAftercare = aftercareSummary.trim().length > 0;
+
   return (
-    <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-6">
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-slate-900 mb-2">After-Care Summary & Email</h2>
-        <p className="text-sm text-slate-600">
-          Review and send a patient-friendly summary of today&apos;s visit and approved orders.
-        </p>
-      </div>
-
-      {/* Email Address */}
-      <div className="mb-4">
-        <label className="block text-sm font-semibold text-slate-700 mb-2">
-          Patient Email Address
-        </label>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="patient@email.com"
-          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-        />
-      </div>
-
-      {/* Summary Text */}
-      <div className="mb-4">
-        <label className="block text-sm font-semibold text-slate-700 mb-2">
-          Summary Message
-        </label>
-        <textarea
-          value={summary}
-          onChange={(e) => setSummary(e.target.value)}
-          rows={12}
-          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono resize-none"
-        />
-        <p className="text-xs text-slate-500 mt-1">
-          Edit the message above before sending. It will be formatted as HTML in the email.
-        </p>
-      </div>
-
-      {/* Buttons */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => setShowPreview(!showPreview)}
-          className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-2"
-        >
-          <Eye className="w-4 h-4" />
-          {showPreview ? "Hide Preview" : "Preview Email"}
-        </button>
-
-        <button
-          onClick={handleSendEmail}
-          disabled={isSending || sendSuccess || !email.trim()}
-          className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-all disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          {isSending ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Sending…
-            </>
-          ) : sendSuccess ? (
-            <>
-              <CheckCircle className="w-4 h-4" />
-              Sent!
-            </>
-          ) : (
-            <>
-              <Send className="w-4 h-4" />
-              Send After-Care Email
-            </>
-          )}
-        </button>
-      </div>
-
-      {/* Success Message */}
-      {sendSuccess && (
-        <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
-          <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-green-900">
-              After-care email sent successfully!
-            </p>
-            <p className="text-sm text-green-700 mt-1">
-              Email sent to <strong>{email}</strong>
-            </p>
+    <div className="bg-white border border-zinc-200/70 rounded-2xl shadow-sm p-6">
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <h2 className="text-lg font-semibold text-zinc-900">After-Care Summary</h2>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200/50">
+              <FileText className="w-3 h-3 mr-1" />
+              Note
+            </span>
           </div>
+          <p className="text-sm text-zinc-600">
+            Generate and send a patient-friendly summary of approved actions
+          </p>
+        </div>
+      </div>
+
+      {/* Generate Button (if no summary yet) */}
+      {!hasAftercare && (
+        <div className="mb-6 text-center py-8 bg-zinc-50 rounded-xl border border-zinc-200/70">
+          <FileText className="w-12 h-12 mx-auto mb-3 text-zinc-300" />
+          <p className="text-sm font-medium text-zinc-600 mb-4">
+            No after-care summary generated yet
+          </p>
+          <button
+            onClick={handleGenerate}
+            disabled={isLoading.aftercare || approvedActions.length === 0}
+            className="px-5 py-2.5 text-sm font-semibold text-white bg-[#7C2D3E] hover:bg-[#5A1F2D] rounded-full shadow-sm transition-all disabled:bg-zinc-300 disabled:cursor-not-allowed inline-flex items-center gap-2"
+          >
+            {isLoading.aftercare ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Generating…
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Generate from {approvedActions.length} Approved Action{approvedActions.length !== 1 ? "s" : ""}
+              </>
+            )}
+          </button>
+          {approvedActions.length === 0 && (
+            <p className="text-xs text-zinc-500 mt-3">
+              Approve at least one action to generate after-care summary
+            </p>
+          )}
         </div>
       )}
 
-      {/* Email Preview */}
-      {showPreview && (
-        <div className="mt-6 border border-slate-300 rounded-lg overflow-hidden">
-          <div className="bg-slate-100 px-4 py-2 border-b border-slate-300">
-            <p className="text-xs font-semibold text-slate-700">Email Preview</p>
+      {/* After-care content (if generated) */}
+      {hasAftercare && (
+        <>
+          {/* Email Address */}
+          <div className="mb-4">
+            <label className="block text-sm font-semibold text-zinc-700 mb-2">
+              Patient Email Address
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="patient@email.com"
+              className="w-full px-3.5 py-2.5 bg-white border border-zinc-200/70 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7C2D3E]/20 focus:border-[#7C2D3E]/30 text-sm transition-all placeholder:text-zinc-400"
+            />
           </div>
-          <div className="bg-white p-6">
-            <div className="mb-4 text-sm text-slate-600">
-              <p>
-                <strong>To:</strong> {email || "(no email provided)"}
-              </p>
-              <p>
-                <strong>From:</strong> noreply@clinicalactionlayer.com
-              </p>
-              <p>
-                <strong>Subject:</strong> After-Care Summary from Your Recent Visit
-              </p>
+
+          {/* Summary Text */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-semibold text-zinc-700">
+                Summary Message
+              </label>
+              <button
+                onClick={handleGenerate}
+                disabled={isLoading.aftercare}
+                className="text-xs font-medium text-[#7C2D3E] hover:text-[#5A1F2D] flex items-center gap-1"
+              >
+                <Sparkles className="w-3 h-3" />
+                Regenerate
+              </button>
             </div>
-            <div className="border-t border-slate-200 pt-4">
-              <div className="whitespace-pre-wrap text-sm text-slate-800 font-sans leading-relaxed">
-                {summary}
+            <textarea
+              value={aftercareSummary}
+              onChange={(e) => setAftercareSummary(e.target.value)}
+              rows={12}
+              className="w-full px-4 py-3 bg-white border border-zinc-200/70 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7C2D3E]/20 focus:border-[#7C2D3E]/30 text-sm font-mono resize-none shadow-inner transition-all"
+            />
+            <p className="text-xs text-zinc-500 mt-2">
+              Edit the message above before sending
+            </p>
+          </div>
+
+          {/* Buttons */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              className="px-4 py-2 text-sm font-medium text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100/80 rounded-lg transition-all flex items-center gap-2"
+            >
+              <Eye className="w-4 h-4" />
+              {showPreview ? "Hide Preview" : "Preview Email"}
+            </button>
+
+            <button
+              onClick={handleSendEmail}
+              disabled={isLoading.aftercare || sendSuccess || !email.trim()}
+              className="px-5 py-2 text-sm font-semibold text-white bg-[#7C2D3E] hover:bg-[#5A1F2D] rounded-full shadow-sm transition-all disabled:bg-zinc-300 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {isLoading.aftercare ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Sending…
+                </>
+              ) : sendSuccess ? (
+                <>
+                  <CheckCircle className="w-4 h-4" />
+                  Sent!
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Send After-Care Email
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Success Message */}
+          {sendSuccess && (
+            <div className="mt-4 bg-emerald-50/50 border border-emerald-200/50 rounded-xl p-4 flex items-start gap-3">
+              <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-emerald-900">
+                  After-care email sent successfully!
+                </p>
+                <p className="text-sm text-emerald-700 mt-1">
+                  Email sent to <strong>{email}</strong>
+                </p>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* Email Preview */}
+          {showPreview && (
+            <div className="mt-6 border border-zinc-200/70 rounded-xl overflow-hidden">
+              <div className="bg-zinc-50 px-4 py-2.5 border-b border-zinc-200/70">
+                <p className="text-xs font-semibold text-zinc-700">Email Preview</p>
+              </div>
+              <div className="bg-white p-6">
+                <div className="mb-4 text-sm text-zinc-600 space-y-1">
+                  <p>
+                    <strong>To:</strong> {email || "(no email provided)"}
+                  </p>
+                  <p>
+                    <strong>From:</strong> noreply@clinicalactionlayer.com
+                  </p>
+                  <p>
+                    <strong>Subject:</strong> After-Care Summary from Your Recent Visit
+                  </p>
+                </div>
+                <div className="border-t border-zinc-200/70 pt-4">
+                  <div className="whitespace-pre-wrap text-sm text-zinc-800 font-sans leading-relaxed">
+                    {aftercareSummary}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <div className="mt-4 bg-red-50 border border-red-200/50 rounded-xl p-4 text-sm text-red-900">
+          {error}
         </div>
       )}
     </div>

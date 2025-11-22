@@ -1,169 +1,162 @@
 "use client";
 
-import { Pill, Stethoscope, CheckCircle2, AlertTriangle, Check } from "lucide-react";
-import type { ClinicalAction } from "./ActionList";
-import { useWorkflow } from "./WorkflowContext";
+import { Pill, Stethoscope, Image, FlaskConical, UserPlus, Calendar, FileText, AlertTriangle, CheckCircle2, Check, X } from "lucide-react";
+import { useSession, type SuggestedAction } from "@/contexts/SessionContext";
 
 interface ActionCardProps {
-  action: ClinicalAction;
-  onViewDetails: () => void;
+  action: SuggestedAction;
 }
 
-export default function ActionCard({ action, onViewDetails }: ActionCardProps) {
-  const { updateAction } = useWorkflow();
+const TYPE_ICONS = {
+  medication: Pill,
+  imaging: Image,
+  lab: FlaskConical,
+  referral: UserPlus,
+  followup: Calendar,
+  aftercare: FileText,
+};
+
+const TYPE_COLORS = {
+  medication: "bg-blue-100 text-blue-600",
+  imaging: "bg-purple-100 text-purple-600",
+  lab: "bg-green-100 text-green-600",
+  referral: "bg-orange-100 text-orange-600",
+  followup: "bg-cyan-100 text-cyan-600",
+  aftercare: "bg-pink-100 text-pink-600",
+};
+
+const SAFETY_COLORS = {
+  high: "bg-red-100 text-red-700 border-red-200/50",
+  medium: "bg-amber-100 text-amber-700 border-amber-200/50",
+  low: "bg-emerald-100 text-emerald-700 border-emerald-200/50",
+};
+
+export default function ActionCard({ action }: ActionCardProps) {
+  const { updateActionStatus } = useSession();
 
   const handleApprove = () => {
-    // TODO: In production, this would call an API endpoint to create the FHIR resource in Medplum
-    // Example: POST /api/approveAction with the action data
-    // or medplum.createResource('MedicationRequest' | 'ServiceRequest', fhirResource)
-    console.log(`[Action approved] Would send to Medplum:`, action);
-    updateAction(action.id, { approved: true });
+    updateActionStatus(action.id, "approved");
   };
 
-  const isLowConfidence = action.confidence < 0.7;
-  const Icon = action.type === "medication" ? Pill : Stethoscope;
-  const resourceType = action.type === "medication" ? "MedicationRequest" : "ServiceRequest";
-  const isApproved = action.approved === true;
+  const handleReject = () => {
+    updateActionStatus(action.id, "rejected");
+  };
+
+  const Icon = TYPE_ICONS[action.type] || FileText;
+  const isApproved = action.status === "approved";
+  const isRejected = action.status === "rejected";
+
+  if (isRejected) {
+    return (
+      <div className="bg-zinc-50 border border-zinc-200/70 rounded-2xl shadow-sm opacity-60">
+        <div className="p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-zinc-200 text-zinc-400">
+            <Icon className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-sm font-semibold text-zinc-500 line-through truncate">
+                {action.title}
+              </h3>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-200 text-zinc-600 text-xs font-semibold rounded-full">
+                <X className="w-3 h-3" />
+                Rejected
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
-      className={`bg-white border rounded-lg shadow-sm transition-all ${
-        isApproved
-          ? "border-green-300 bg-green-50/30"
-          : "border-slate-200 hover:shadow-md"
+      className={`group bg-white border border-zinc-200/70 rounded-2xl shadow-sm transition-all hover:shadow-md ${
+        isApproved ? "bg-gradient-to-r from-emerald-50/30 to-white border-emerald-300" : "hover:-translate-y-0.5"
       }`}
     >
-      {/* Header */}
-      <div className="p-4 border-b border-slate-100">
-        <div className="flex items-start justify-between">
-          {/* Left: Icon + Title */}
-          <div className="flex items-start gap-3 flex-1">
-            <div
-              className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                isApproved
-                  ? "bg-green-100 text-green-600"
-                  : action.type === "medication"
-                  ? "bg-blue-100 text-blue-600"
-                  : "bg-purple-100 text-purple-600"
-              }`}
-            >
-              <Icon className="w-5 h-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-base font-semibold text-slate-900 mb-0.5">
-                {action.label}
+      <div className="p-4 flex items-start gap-4">
+        {/* Left: Icon */}
+        <div
+          className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${
+            isApproved ? "bg-emerald-100 text-emerald-600" : TYPE_COLORS[action.type]
+          }`}
+        >
+          <Icon className="w-5 h-5" />
+        </div>
+
+        {/* Middle: Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between mb-2">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-sm font-semibold text-zinc-900">
+                  {action.title}
+                </h3>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-700 border border-zinc-200/50 capitalize">
+                  {action.type}
+                </span>
                 {isApproved && (
-                  <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full border border-emerald-200/50">
                     <Check className="w-3 h-3" />
                     Approved
                   </span>
                 )}
-              </h3>
-              <p className="text-xs text-slate-500">
-                {resourceType} • {action.patient.name}
+              </div>
+              <p className="text-xs text-zinc-600">
+                {action.details}
               </p>
+              {action.doseInfo && (
+                <p className="text-xs text-zinc-500 mt-1">
+                  <span className="font-semibold">Dose:</span> {action.doseInfo}
+                </p>
+              )}
+              {action.pharmacy && (
+                <p className="text-xs text-zinc-500 mt-1">
+                  <span className="font-semibold">Pharmacy:</span> {action.pharmacy}
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Right: Confidence Indicator */}
-          {!isApproved && (
-            <div
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full flex-shrink-0 ml-3 ${
-                isLowConfidence
-                  ? "bg-amber-50 border border-amber-200"
-                  : "bg-green-50 border border-green-200"
-              }`}
-            >
-              {isLowConfidence ? (
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-              ) : (
-                <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
-              )}
-              <span
-                className={`text-xs font-semibold ${
-                  isLowConfidence ? "text-amber-700" : "text-green-700"
-                }`}
-              >
-                {Math.round(action.confidence * 100)}%
-              </span>
+          {/* Rationale */}
+          {action.rationale && (
+            <div className="text-xs text-zinc-500 italic mt-2 pl-3 border-l-2 border-zinc-200">
+              "{action.rationale}"
             </div>
           )}
-        </div>
-      </div>
 
-      {/* Details */}
-      <div className={`p-4 ${isApproved ? "bg-green-50/50" : "bg-slate-50"}`}>
-        <div className="space-y-2 text-sm">
-          {action.type === "medication" && (
-            <>
-              {action.details.dose && (
-                <div className="flex gap-2">
-                  <span className="text-slate-500 font-medium w-24 flex-shrink-0">Dose:</span>
-                  <span className="text-slate-900">{action.details.dose}</span>
-                </div>
-              )}
-              {action.details.instruction && (
-                <div className="flex gap-2">
-                  <span className="text-slate-500 font-medium w-24 flex-shrink-0">
-                    Instructions:
-                  </span>
-                  <span className="text-slate-900">{action.details.instruction}</span>
-                </div>
-              )}
-              {action.details.intent && (
-                <div className="flex gap-2">
-                  <span className="text-slate-500 font-medium w-24 flex-shrink-0">Intent:</span>
-                  <span className="text-slate-900 capitalize">{action.details.intent}</span>
-                </div>
-              )}
-            </>
-          )}
-
-          {action.type === "service" && (
-            <>
-              {action.details.code && (
-                <div className="flex gap-2">
-                  <span className="text-slate-500 font-medium w-24 flex-shrink-0">Code:</span>
-                  <span className="text-slate-900">{action.details.code}</span>
-                </div>
-              )}
-              {action.details.reason && (
-                <div className="flex gap-2">
-                  <span className="text-slate-500 font-medium w-24 flex-shrink-0">Reason:</span>
-                  <span className="text-slate-900">{action.details.reason}</span>
-                </div>
-              )}
-            </>
-          )}
-
-          {action.transcriptId && (
-            <div className="flex gap-2 pt-2 border-t border-slate-200 mt-2">
-              <span className="text-xs text-slate-400">
-                Derived from transcript{" "}
-                <code className="text-slate-600 font-mono">{action.transcriptId}</code>
-              </span>
+          {/* Safety Flag */}
+          {action.safetyFlag && action.safetyMessage && (
+            <div className={`mt-3 px-3 py-2 rounded-lg text-xs flex items-start gap-2 ${SAFETY_COLORS[action.safetyFlag]}`}>
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              <span className="font-medium">{action.safetyMessage}</span>
             </div>
           )}
-        </div>
-      </div>
 
-      {/* Actions */}
-      <div className="p-4 flex items-center justify-end gap-3">
-        <button
-          className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={onViewDetails}
-          disabled={isApproved}
-        >
-          View Details
-        </button>
-        <button
-          onClick={handleApprove}
-          disabled={isApproved}
-          className="px-4 py-2 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm hover:shadow transition-all disabled:bg-slate-300 disabled:cursor-not-allowed"
-        >
-          {isApproved ? "Approved" : "Approve & Sign"}
-        </button>
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 mt-4">
+            {!isApproved && (
+              <>
+                <button
+                  onClick={handleReject}
+                  className="px-3 py-1.5 text-xs font-medium text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100/80 rounded-lg transition-all border border-zinc-200/70"
+                >
+                  Reject
+                </button>
+                <button
+                  onClick={handleApprove}
+                  className="px-4 py-1.5 text-xs font-semibold text-white bg-[#7C2D3E] hover:bg-[#5A1F2D] rounded-full shadow-sm transition-all flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Approve & Sign
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+
