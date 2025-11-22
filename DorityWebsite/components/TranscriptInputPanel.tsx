@@ -1,169 +1,45 @@
 "use client";
 
-import { useState } from "react";
-import { FileText, Loader2, Sparkles } from "lucide-react";
-import { useWorkflow } from "./WorkflowContext";
-import type { ClinicalAction } from "./ActionList";
+import { FileText, Loader2, Sparkles, CheckCircle2 } from "lucide-react";
+import { useSession } from "@/contexts/SessionContext";
 
 export default function TranscriptInputPanel() {
   const {
-    selectedPatient,
+    patient,
     transcript,
     setTranscript,
-    setActions,
-    setCurrentStep,
-    isGenerating,
-    setIsGenerating,
-  } = useWorkflow();
-
-  const [error, setError] = useState<string | null>(null);
+    analyzeTranscript,
+    isLoading,
+    error,
+    clearError,
+  } = useSession();
 
   const handleGenerateActions = async () => {
-    setError(null);
-
-    // Validation
-    if (!selectedPatient) {
-      setError("Please select a patient first");
-      return;
-    }
-
-    if (!transcript.trim()) {
-      setError("Please enter a transcript");
-      return;
-    }
-
-    setIsGenerating(true);
-
-    try {
-      // TODO: Replace with real backend API call
-      // Example: POST /api/actions with { patientId: selectedPatient.id, transcript }
-      // This will:
-      // 1. Fetch full transcript from Heidi API (if needed)
-      // 2. Send to Claude for clinical intent extraction
-      // 3. Map Claude's output to FHIR MedicationRequest/ServiceRequest resources
-      // 4. Return draft actions
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Mock generated actions based on transcript keywords
-      const mockActions: ClinicalAction[] = [];
-
-      const transcriptLower = transcript.toLowerCase();
-
-      if (transcriptLower.includes("metformin") || transcriptLower.includes("diabetes") || transcriptLower.includes("blood sugar")) {
-        mockActions.push({
-          id: `action-${Date.now()}-1`,
-          type: "medication",
-          patient: { name: selectedPatient.name },
-          label: "Metformin 500mg",
-          details: {
-            dose: "500mg",
-            instruction: "Take 1 tablet twice daily with meals",
-            intent: "order",
-          },
-          confidence: 0.92,
-          transcriptId: `transcript-${Date.now()}`,
-          approved: false,
-        });
-      }
-
-      if (transcriptLower.includes("cbc") || transcriptLower.includes("blood work") || transcriptLower.includes("lab")) {
-        mockActions.push({
-          id: `action-${Date.now()}-2`,
-          type: "service",
-          patient: { name: selectedPatient.name },
-          label: "Complete Blood Count (CBC)",
-          details: {
-            code: "CBC Lab Panel",
-            reason: "Routine monitoring",
-          },
-          confidence: 0.87,
-          transcriptId: `transcript-${Date.now()}`,
-          approved: false,
-        });
-      }
-
-      if (transcriptLower.includes("lisinopril") || transcriptLower.includes("blood pressure") || transcriptLower.includes("hypertension")) {
-        mockActions.push({
-          id: `action-${Date.now()}-3`,
-          type: "medication",
-          patient: { name: selectedPatient.name },
-          label: "Lisinopril 10mg",
-          details: {
-            dose: "10mg",
-            instruction: "Take 1 tablet once daily in the morning",
-            intent: "order",
-          },
-          confidence: 0.88,
-          transcriptId: `transcript-${Date.now()}`,
-          approved: false,
-        });
-      }
-
-      if (transcriptLower.includes("a1c") || transcriptLower.includes("hemoglobin")) {
-        mockActions.push({
-          id: `action-${Date.now()}-4`,
-          type: "service",
-          patient: { name: selectedPatient.name },
-          label: "Hemoglobin A1C Test",
-          details: {
-            code: "HbA1c",
-            reason: "Diabetes management and monitoring",
-          },
-          confidence: 0.91,
-          transcriptId: `transcript-${Date.now()}`,
-          approved: false,
-        });
-      }
-
-      // If no keywords matched, provide a default action
-      if (mockActions.length === 0) {
-        mockActions.push({
-          id: `action-${Date.now()}-1`,
-          type: "service",
-          patient: { name: selectedPatient.name },
-          label: "Follow-up Appointment",
-          details: {
-            code: "Office Visit - Follow-up",
-            reason: "Routine follow-up based on consultation",
-          },
-          confidence: 0.75,
-          transcriptId: `transcript-${Date.now()}`,
-          approved: false,
-        });
-      }
-
-      setActions(mockActions);
-      setCurrentStep(3); // Move to actions review step
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate actions");
-    } finally {
-      setIsGenerating(false);
-    }
+    clearError();
+    await analyzeTranscript();
   };
 
-  const isDisabled = !selectedPatient;
+  const isDisabled = !patient;
   const charCount = transcript.length;
+  const hasContent = transcript.trim().length > 20; // Minimum threshold
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="mb-2">
-        <label className="block text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">
-          Session Transcript
-        </label>
-        <p className="text-xs text-slate-600 mb-3">
-          Paste or type the consultation transcript for this patient. This will be sent to the AI to generate draft orders.
+    <div className="bg-white border border-zinc-200/70 rounded-2xl shadow-sm p-6 flex flex-col min-h-[500px]">
+      {/* Header */}
+      <div className="mb-4">
+        <h2 className="text-sm font-semibold text-zinc-900 mb-1">Session Transcript</h2>
+        <p className="text-xs text-zinc-600">
+          Paste or type the consultation transcript
         </p>
       </div>
 
       {isDisabled && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4 flex items-start gap-2">
+        <div className="bg-amber-50/50 border border-amber-200/50 rounded-xl p-3.5 mb-4 flex items-start gap-2.5">
           <FileText className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
           <div>
             <p className="text-sm font-medium text-amber-900">Select a patient to begin</p>
-            <p className="text-xs text-amber-700 mt-1">
-              Search and select a patient on the left before entering the transcript.
+            <p className="text-xs text-amber-700 mt-0.5">
+              Search and select a patient on the left first
             </p>
           </div>
         </div>
@@ -177,43 +53,51 @@ export default function TranscriptInputPanel() {
           placeholder={
             isDisabled
               ? "Select a patient first…"
-              : "Patient presents with complaints of increased thirst and frequent urination over the past 3 months. Reports checking blood sugars at home, ranging 180-240 mg/dL fasting. Currently on Metformin 500mg daily. Discussed increasing dose and ordering labs including CBC and HbA1c. Patient also mentions elevated blood pressure readings at home (150/95). Will start Lisinopril 10mg daily..."
+              : "Patient presents with complaints of increased thirst and frequent urination..."
           }
-          className="flex-1 w-full p-4 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+          className="flex-1 w-full p-4 text-sm bg-white border border-zinc-200/70 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#7C2D3E]/20 focus:border-[#7C2D3E]/30 resize-none disabled:bg-zinc-50 disabled:text-zinc-400 disabled:cursor-not-allowed shadow-inner transition-all placeholder:text-zinc-400"
         />
 
         <div className="flex items-center justify-between mt-3">
-          <span className="text-xs text-slate-500">
-            {charCount} character{charCount !== 1 ? "s" : ""}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-500">
+              {charCount} character{charCount !== 1 ? "s" : ""}
+            </span>
+            {hasContent && !isDisabled && !isLoading.analyze && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/50">
+                <CheckCircle2 className="w-3 h-3" />
+                AI ready
+              </span>
+            )}
+          </div>
 
           <button
             onClick={handleGenerateActions}
-            disabled={isDisabled || isGenerating || !transcript.trim()}
-            className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-all disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center gap-2"
+            disabled={isDisabled || isLoading.analyze || !hasContent}
+            className="px-4 py-2.5 text-sm font-semibold text-white bg-[#7C2D3E] hover:bg-[#5A1F2D] rounded-full shadow-sm transition-all disabled:bg-zinc-300 disabled:cursor-not-allowed flex items-center gap-2"
           >
-            {isGenerating ? (
+            {isLoading.analyze ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Analyzing transcript…
+                Analyzing…
               </>
             ) : (
               <>
                 <Sparkles className="w-4 h-4" />
-                Generate Actions from Transcript
+                Generate Actions
               </>
             )}
           </button>
         </div>
 
         {error && (
-          <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
-            <div className="text-sm text-red-900">{error}</div>
+          <div className="mt-3 bg-red-50 border border-red-200/50 rounded-xl p-3 text-sm text-red-900">
+            {error}
           </div>
         )}
 
-        {isGenerating && (
-          <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
+        {isLoading.analyze && (
+          <div className="mt-3 bg-blue-50/50 border border-blue-200/50 rounded-xl p-3 flex items-center gap-2.5">
             <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
             <p className="text-sm text-blue-900">
               Analyzing transcript and generating draft orders…

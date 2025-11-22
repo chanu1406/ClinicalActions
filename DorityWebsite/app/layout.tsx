@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { SessionProvider } from "@/contexts/SessionContext";
 
 export const metadata: Metadata = {
   title: "Clinical Action Layer",
@@ -13,8 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased bg-slate-100 min-h-screen flex">
-        {children}
+      <body className="antialiased bg-[#F7F1EC] min-h-screen flex">
+        <SessionProvider>
+          {children}
+        </SessionProvider>
       </body>
     </html>
   );

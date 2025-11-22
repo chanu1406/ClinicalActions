@@ -1,48 +1,28 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Loader2, Inbox } from "lucide-react";
+import { useState } from "react";
+import { Loader2, Inbox, CheckCircle } from "lucide-react";
 import ActionCard from "./ActionCard";
-import ActionDetailsModal from "./ActionDetailsModal";
-import { useWorkflow } from "./WorkflowContext";
-
-// Type definitions for clinical actions
-export interface ClinicalAction {
-  id: string;
-  type: "medication" | "service";
-  patient: {
-    name: string;
-  };
-  label: string;
-  details: {
-    dose?: string;
-    instruction?: string;
-    intent?: string;
-    code?: string;
-    reason?: string;
-  };
-  confidence: number;
-  transcriptId?: string;
-  approved?: boolean;
-}
+import { useSession } from "@/contexts/SessionContext";
 
 export default function ActionList() {
-  const { actions, isGenerating, allApproved, setCurrentStep } = useWorkflow();
-  const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
+  const { suggestedActions, approvedActions, isLoading, applyApprovedActions, error, clearError } = useSession();
+  const [applySuccess, setApplySuccess] = useState(false);
 
-  // Auto-advance to step 4 when all actions are approved
-  useEffect(() => {
-    if (allApproved && actions.length > 0) {
-      setCurrentStep(4);
-    }
-  }, [allApproved, actions.length, setCurrentStep]);
+  const handleApplyActions = async () => {
+    clearError();
+    setApplySuccess(false);
+    await applyApprovedActions();
+    setApplySuccess(true);
+    
+    // Clear success message after 3 seconds
+    setTimeout(() => setApplySuccess(false), 3000);
+  };
 
-  const selectedAction = actions.find((a) => a.id === selectedActionId);
-
-  // Loading state (while generating)
-  if (isGenerating) {
+  // Loading state
+  if (isLoading.analyze) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+      <div className="flex flex-col items-center justify-center py-16 text-zinc-500">
         <Loader2 className="w-8 h-8 animate-spin mb-3" />
         <p className="text-sm font-medium">Generating draft orders from transcript…</p>
       </div>
@@ -50,38 +30,92 @@ export default function ActionList() {
   }
 
   // Empty state
-  if (actions.length === 0) {
+  if (suggestedActions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+      <div className="flex flex-col items-center justify-center py-16 text-zinc-400">
         <Inbox className="w-12 h-12 mb-3" />
-        <p className="text-sm font-medium">No draft actions generated yet</p>
-        <p className="text-xs text-slate-500 mt-1">
-          Paste a transcript above and click &quot;Generate Actions&quot;
-        </p>
+        <p className="text-sm font-medium">No draft actions yet</p>
+        <p className="text-xs mt-1">Generate actions from the transcript to begin</p>
       </div>
     );
   }
 
-  // Success state with data
+  // Group actions by category
+  const groupedActions = suggestedActions.reduce((acc, action) => {
+    const category = action.categoryLabel || "Other";
+    if (!acc[category]) {
+      acc[category] = [];
+    }
+    acc[category].push(action);
+    return acc;
+  }, {} as Record<string, typeof suggestedActions>);
+
+  const canApply = approvedActions.length > 0 && !isLoading.apply;
+
   return (
-    <>
-      <div className="space-y-4">
-        {actions.map((action) => (
-          <ActionCard
-            key={action.id}
-            action={action}
-            onViewDetails={() => setSelectedActionId(action.id)}
-          />
-        ))}
+    <div className="space-y-6">
+      {/* Grouped Actions */}
+      {Object.entries(groupedActions).map(([category, actions]) => (
+        <div key={category}>
+          <h3 className="text-sm font-semibold text-zinc-700 mb-3 px-1">
+            {category}
+          </h3>
+          <div className="space-y-3">
+            {actions.map((action) => (
+              <ActionCard key={action.id} action={action} />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* Apply Actions Button */}
+      <div className="pt-6 border-t border-zinc-200/70">
+        <button
+          onClick={handleApplyActions}
+          disabled={!canApply}
+          className="w-full px-6 py-3.5 text-sm font-semibold text-white bg-[#7C2D3E] hover:bg-[#5A1F2D] rounded-full shadow-sm transition-all disabled:bg-zinc-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {isLoading.apply ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Applying to EMR…
+            </>
+          ) : (
+            <>
+              <CheckCircle className="w-5 h-5" />
+              Apply {approvedActions.length} Approved Action{approvedActions.length !== 1 ? "s" : ""} to EMR
+            </>
+          )}
+        </button>
+
+        {!canApply && approvedActions.length === 0 && (
+          <p className="text-xs text-zinc-500 text-center mt-2">
+            Approve at least one action to continue
+          </p>
+        )}
       </div>
 
-      {/* Action Details Modal */}
-      {selectedAction && (
-        <ActionDetailsModal
-          action={selectedAction}
-          onClose={() => setSelectedActionId(null)}
-        />
+      {/* Success Message */}
+      {applySuccess && !error && (
+        <div className="bg-emerald-50/50 border border-emerald-200/50 rounded-xl p-4 flex items-start gap-3">
+          <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-emerald-900">
+              Actions applied successfully!
+            </p>
+            <p className="text-sm text-emerald-700 mt-1">
+              {approvedActions.length} action{approvedActions.length !== 1 ? "s" : ""} sent to Medplum EMR
+            </p>
+          </div>
+        </div>
       )}
-    </>
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200/50 rounded-xl p-4 text-sm text-red-900">
+          {error}
+        </div>
+      )}
+    </div>
   );
 }
