@@ -20,9 +20,12 @@ interface DummyDataContext {
   emergencyContactPhone?: string;
   preferredPharmacy?: string;
   insurance?: string;
+  generalPractitioner?: string;
   // Clinical context
   clinicalContext?: string; // e.g., "subarachnoid hemorrhage", "chest pain"
   urgency?: 'stat' | 'urgent' | 'routine';
+  // Metadata
+  hasRealPatientData?: boolean;
 }
 
 /**
@@ -38,50 +41,94 @@ export function generateSmartDummyValue(
 
   // Patient demographic fields - USE REAL MEDPLUM DATA
   if (linkId.includes('patient') && linkId.includes('name')) {
-    return context.patientName || 'John Doe';
+    if (context.patientName) return context.patientName;
+    // Generate realistic name for demo purposes
+    const firstNames = ['Sarah', 'Michael', 'Jennifer', 'David', 'Emily', 'James', 'Lisa', 'Robert'];
+    const lastNames = ['Johnson', 'Williams', 'Brown', 'Davis', 'Miller', 'Wilson', 'Moore', 'Taylor'];
+    return `${firstNames[Math.floor(Math.random() * firstNames.length)]} ${lastNames[Math.floor(Math.random() * lastNames.length)]}`;
   }
-  
+
   if (linkId.includes('dob') || linkId.includes('birth')) {
     if (context.patientDob) return context.patientDob;
-    const age = context.patientAge || 45;
+    // Generate realistic DOB for demo (adult patient, 25-65 years old)
+    const age = context.patientAge || (25 + Math.floor(Math.random() * 40));
     const year = new Date().getFullYear() - age;
-    return `${year}-06-15`;
+    const month = String(Math.floor(Math.random() * 12) + 1).padStart(2, '0');
+    const day = String(Math.floor(Math.random() * 28) + 1).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
-  
+
   if (linkId.includes('age')) {
-    return context.patientAge?.toString() || '45';
+    if (context.patientAge) return context.patientAge.toString();
+    // Generate realistic age for demo
+    return String(25 + Math.floor(Math.random() * 40));
   }
-  
+
   if (linkId.includes('gender') || linkId.includes('sex')) {
-    return context.patientGender || 'Unknown';
+    if (context.patientGender) return context.patientGender;
+    // Generate realistic gender for demo
+    const genders = ['male', 'female'];
+    return genders[Math.floor(Math.random() * genders.length)];
   }
-  
+
   if (linkId.includes('mrn') || linkId.includes('medical') && linkId.includes('record')) {
-    return context.patientMrn || `MRN${Math.random().toString().slice(2, 9)}`;
+    if (context.patientMrn) return context.patientMrn;
+    // Generate realistic MRN format for demo
+    return `MRN${String(Math.floor(Math.random() * 9000000) + 1000000)}`;
   }
 
   // Contact information - USE REAL MEDPLUM DATA
   if (linkId.includes('phone') || linkId.includes('telephone')) {
     if (linkId.includes('emergency')) {
-      return context.emergencyContactPhone || context.patientPhone || '555-0123';
+      if (context.emergencyContactPhone) return context.emergencyContactPhone;
+      if (context.patientPhone) return context.patientPhone;
     }
-    return context.patientPhone || '555-0123';
+    if (context.patientPhone) return context.patientPhone;
+    // Generate realistic phone number for demo
+    const areaCode = String(200 + Math.floor(Math.random() * 799));
+    const exchange = String(200 + Math.floor(Math.random() * 799));
+    const number = String(1000 + Math.floor(Math.random() * 8999));
+    return `(${areaCode}) ${exchange}-${number}`;
   }
-  
+
   if (linkId.includes('email')) {
-    return context.patientEmail || 'patient@example.com';
+    if (context.patientEmail) return context.patientEmail;
+    // Generate realistic email for demo
+    const domains = ['gmail.com', 'yahoo.com', 'outlook.com', 'icloud.com'];
+    const firstName = context.patientName?.split(' ')[0]?.toLowerCase() || 'patient';
+    const lastName = context.patientName?.split(' ')[1]?.toLowerCase() || String(Math.floor(Math.random() * 999));
+    return `${firstName}.${lastName}@${domains[Math.floor(Math.random() * domains.length)]}`;
   }
-  
+
   if (linkId.includes('address')) {
-    return context.patientAddress || '123 Main Street, Anytown, ST 12345';
+    if (context.patientAddress) return context.patientAddress;
+    // Generate realistic address for demo
+    const streetNumbers = [123, 456, 789, 1012, 2345, 3456];
+    const streets = ['Oak Street', 'Maple Avenue', 'Pine Drive', 'Cedar Lane', 'Elm Court', 'Birch Way'];
+    const cities = ['Springfield', 'Riverside', 'Fairview', 'Georgetown', 'Madison', 'Arlington'];
+    const states = ['CA', 'NY', 'TX', 'FL', 'IL', 'PA'];
+    const streetNum = streetNumbers[Math.floor(Math.random() * streetNumbers.length)];
+    const street = streets[Math.floor(Math.random() * streets.length)];
+    const city = cities[Math.floor(Math.random() * cities.length)];
+    const state = states[Math.floor(Math.random() * states.length)];
+    const zip = String(10000 + Math.floor(Math.random() * 89999));
+    return `${streetNum} ${street}, ${city}, ${state} ${zip}`;
   }
-  
+
   if (linkId.includes('emergency') && linkId.includes('contact')) {
     if (linkId.includes('name')) {
-      return context.emergencyContactName || 'Emergency Contact';
+      if (context.emergencyContactName) return context.emergencyContactName;
+      // Generate realistic emergency contact name
+      const names = ['Jane Smith', 'John Doe', 'Mary Johnson', 'Robert Williams', 'Patricia Brown'];
+      return names[Math.floor(Math.random() * names.length)];
     }
     if (linkId.includes('phone')) {
-      return context.emergencyContactPhone || '555-0124';
+      if (context.emergencyContactPhone) return context.emergencyContactPhone;
+      // Generate realistic phone
+      const areaCode = String(200 + Math.floor(Math.random() * 799));
+      const exchange = String(200 + Math.floor(Math.random() * 799));
+      const number = String(1000 + Math.floor(Math.random() * 8999));
+      return `(${areaCode}) ${exchange}-${number}`;
     }
   }
 
@@ -202,10 +249,17 @@ export function generateSmartDummyValue(
 
   // Pharmacy fields - USE REAL MEDPLUM DATA
   if (linkId.includes('pharmacy')) {
-    if (linkId.includes('preference') || linkId.includes('name')) {
-      return context.preferredPharmacy || 'Hospital Pharmacy';
-    }
-    return context.preferredPharmacy || 'Patient preferred pharmacy';
+    if (context.preferredPharmacy) return context.preferredPharmacy;
+    // Generate realistic pharmacy name for demo
+    const pharmacies = [
+      'CVS Pharmacy #5432',
+      'Walgreens #8765',
+      'Rite Aid Pharmacy',
+      'Community Health Pharmacy',
+      'MedExpress Pharmacy',
+      'HealthPlus Pharmacy'
+    ];
+    return pharmacies[Math.floor(Math.random() * pharmacies.length)];
   }
 
   // Scheduling/Logistics
@@ -237,7 +291,31 @@ export function generateSmartDummyValue(
 
   // Insurance/Billing - USE REAL MEDPLUM DATA
   if (linkId.includes('insurance')) {
-    return context.insurance || 'Patient insurance on file';
+    if (context.insurance) return context.insurance;
+    // Generate realistic insurance for demo
+    const insuranceProviders = [
+      'Blue Cross Blue Shield',
+      'United Healthcare',
+      'Aetna',
+      'Cigna',
+      'Humana',
+      'Kaiser Permanente'
+    ];
+    return insuranceProviders[Math.floor(Math.random() * insuranceProviders.length)];
+  }
+
+  // Primary care provider - USE REAL MEDPLUM DATA
+  if ((linkId.includes('primary') || linkId.includes('pcp')) && (linkId.includes('care') || linkId.includes('provider'))) {
+    if (context.generalPractitioner) return context.generalPractitioner;
+    // Generate realistic PCP name
+    const pcpNames = [
+      'Dr. Sarah Chen, MD',
+      'Dr. Michael Johnson, MD',
+      'Dr. Emily Rodriguez, MD',
+      'Dr. David Kim, MD',
+      'Dr. Jennifer Williams, MD'
+    ];
+    return pcpNames[Math.floor(Math.random() * pcpNames.length)];
   }
 
   // Generic fallbacks based on type
@@ -281,20 +359,58 @@ export function generateSmartDummyValue(
     
     case 'choice':
       // CRITICAL: Return the actual code/value that the form expects
-      // The form uses: option.valueCoding?.code || option.valueString
+      // Intelligent selection based on context and field name
       if (item.answerOption && item.answerOption.length > 0) {
-        const firstOption = item.answerOption[0];
-        
+        let selectedOption = item.answerOption[0]; // Default to first option
+
+        // Smart selection based on field type and context
+        if (linkId.includes('priority')) {
+          // Select priority based on urgency context
+          const priorityMatch = item.answerOption.find(opt => {
+            const display = (opt.valueCoding?.display || opt.valueString || '').toLowerCase();
+            if (context.urgency === 'stat' && (display.includes('stat') || display.includes('immediate'))) return true;
+            if (context.urgency === 'urgent' && display.includes('urgent')) return true;
+            if (context.urgency === 'routine' && (display.includes('routine') || display.includes('normal'))) return true;
+            return false;
+          });
+          if (priorityMatch) selectedOption = priorityMatch;
+          else if (context.urgency === 'routine') {
+            // If no match, default to first option for routine (usually routine/normal)
+            selectedOption = item.answerOption[0];
+          }
+        } else if (linkId.includes('contrast')) {
+          // For contrast, prefer "No" or "Without contrast" options
+          const noContrastOption = item.answerOption.find(opt => {
+            const display = (opt.valueCoding?.display || opt.valueString || '').toLowerCase();
+            return display.includes('no') || display.includes('without') || display.includes('none');
+          });
+          if (noContrastOption) selectedOption = noContrastOption;
+        } else if (linkId.includes('sedation')) {
+          // For sedation, prefer "No" or "Not required"
+          const noSedationOption = item.answerOption.find(opt => {
+            const display = (opt.valueCoding?.display || opt.valueString || '').toLowerCase();
+            return display.includes('no') || display.includes('not required') || display.includes('none');
+          });
+          if (noSedationOption) selectedOption = noSedationOption;
+        } else if (linkId.includes('transport')) {
+          // For transport, prefer "No" or "Not required"
+          const noTransportOption = item.answerOption.find(opt => {
+            const display = (opt.valueCoding?.display || opt.valueString || '').toLowerCase();
+            return display.includes('no') || display.includes('not required') || display.includes('ambulatory');
+          });
+          if (noTransportOption) selectedOption = noTransportOption;
+        }
+
         // Return the CODE (for valueCoding) or STRING (for valueString)
         // This is what the select dropdown uses as the option value
-        if (firstOption.valueCoding?.code) {
-          return firstOption.valueCoding.code;
+        if (selectedOption.valueCoding?.code) {
+          return selectedOption.valueCoding.code;
         }
-        if (firstOption.valueCoding?.display) {
-          return firstOption.valueCoding.display;
+        if (selectedOption.valueCoding?.display) {
+          return selectedOption.valueCoding.display;
         }
-        if (firstOption.valueString) {
-          return firstOption.valueString;
+        if (selectedOption.valueString) {
+          return selectedOption.valueString;
         }
       }
       return ''; // Empty string so form shows "Select an option..."
@@ -318,10 +434,26 @@ export function fillMissingFields(
   questionnaire: any,
   context: DummyDataContext = {}
 ): any {
+  // Input validation
+  if (!questionnaireResponse || !questionnaire) {
+    console.error('[fillMissingFields] Invalid input: questionnaireResponse or questionnaire is null/undefined');
+    return questionnaireResponse;
+  }
+
   const filledResponse = JSON.parse(JSON.stringify(questionnaireResponse));
-  
+
+  // Track statistics for logging
+  const stats = {
+    totalFields: 0,
+    alreadyFilled: 0,
+    autoFilled: 0,
+    usedRealData: 0,
+    usedDummyData: 0
+  };
+
   // Helper to check if an item already has an answer
   const hasAnswer = (itemId: string, items: any[]): boolean => {
+    if (!items || !Array.isArray(items)) return false;
     for (const item of items) {
       if (item.linkId === itemId && item.answer && item.answer.length > 0) {
         return true;
@@ -335,16 +467,40 @@ export function fillMissingFields(
   
   // Helper to add missing items recursively
   const fillItems = (questionnaireItems: any[], responseItems: any[], parentGroup?: any) => {
+    if (!questionnaireItems || !Array.isArray(questionnaireItems)) {
+      console.warn('[fillMissingFields] Invalid questionnaireItems:', questionnaireItems);
+      return;
+    }
+
     for (const qItem of questionnaireItems) {
       // Skip display items
       if (qItem.type === 'display') continue;
-      
+
+      stats.totalFields++;
+
       // Check if this item already has an answer
       const alreadyAnswered = hasAnswer(qItem.linkId, responseItems);
-      
+
+      if (alreadyAnswered) {
+        stats.alreadyFilled++;
+      }
+
       if (!alreadyAnswered && qItem.type !== 'group') {
         // Generate dummy value for this field
         const dummyValue = generateSmartDummyValue(qItem, context);
+        stats.autoFilled++;
+
+        // Track if we used real data or dummy data
+        const linkIdLower = qItem.linkId?.toLowerCase() || '';
+        if (linkIdLower.includes('patient') || linkIdLower.includes('name') ||
+            linkIdLower.includes('phone') || linkIdLower.includes('email') ||
+            linkIdLower.includes('address') || linkIdLower.includes('mrn')) {
+          if (context.hasRealPatientData) {
+            stats.usedRealData++;
+          } else {
+            stats.usedDummyData++;
+          }
+        }
         
         // Create answer object based on type
         let answer;
@@ -425,7 +581,31 @@ export function fillMissingFields(
   
   if (questionnaire.item && filledResponse.item) {
     fillItems(questionnaire.item, filledResponse.item);
+  } else {
+    console.warn('[fillMissingFields] Missing questionnaire.item or filledResponse.item');
   }
-  
+
+  // Log statistics
+  console.log('[fillMissingFields] Autofill Statistics:', {
+    totalFields: stats.totalFields,
+    alreadyFilled: stats.alreadyFilled,
+    autoFilled: stats.autoFilled,
+    usedRealData: stats.usedRealData,
+    usedDummyData: stats.usedDummyData,
+    completionRate: stats.totalFields > 0 ? `${Math.round(((stats.alreadyFilled + stats.autoFilled) / stats.totalFields) * 100)}%` : 'N/A',
+    hasRealPatientData: context.hasRealPatientData || false
+  });
+
+  // Validate critical fields are filled
+  if (filledResponse.item && Array.isArray(filledResponse.item)) {
+    const hasPatientName = filledResponse.item.some((item: any) =>
+      item.linkId?.toLowerCase().includes('name') && item.answer && item.answer.length > 0
+    );
+
+    if (!hasPatientName) {
+      console.warn('[fillMissingFields] WARNING: Patient name field may not be filled');
+    }
+  }
+
   return filledResponse;
 }

@@ -503,7 +503,7 @@ For a group linkId "exam-details" containing "examType" and "bodyRegion", format
             action.resource,
             questionnaire,
             {
-              // Real patient data from Medplum
+              // Real patient data from Medplum - COMPREHENSIVE
               patientName: patient?.name,
               patientAge: patient?.age,
               patientDob: patient?.dob,
@@ -516,9 +516,12 @@ For a group linkId "exam-details" containing "examType" and "bodyRegion", format
               emergencyContactPhone: patient?.emergencyContactPhone,
               preferredPharmacy: patient?.preferredPharmacy,
               insurance: patient?.insurance,
+              generalPractitioner: patient?.generalPractitioner,
               // Clinical context
               clinicalContext,
-              urgency
+              urgency,
+              // Metadata for better generation
+              hasRealPatientData: !!(patient?.name && patient?.mrn)
             }
           );
           
