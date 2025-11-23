@@ -234,15 +234,4 @@ Currently using hardcoded mock data for:
 6. **Complete workflow:** After all approved, see After-care panel
 7. **Send email:** Edit summary, preview, and send
 
-## TODO
 
-- [ ] Integrate Medplum SDK for real patient search
-- [ ] Set up backend API route for Claude processing
-- [ ] Wire up FHIR resource creation in Medplum
-- [ ] Integrate Heidi API for transcript fetching
-- [ ] Add real email service integration
-- [ ] Add authentication/authorization
-- [ ] Implement real-time updates
-- [ ] Add unit and integration tests
-- [ ] Add error boundary components
-- [ ] Add audit logging for approvals
