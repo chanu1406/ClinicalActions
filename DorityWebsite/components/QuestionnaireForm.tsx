@@ -35,9 +35,22 @@ function QuestionnaireItemRenderer({
   // Get the actual value for this item from the flat responses object
   const itemValue = value?.[linkId];
   
-  // Debug log for nested items
-  if (depth > 0 && itemValue !== undefined) {
-    console.log(`[QuestionnaireItemRenderer] Rendering nested item ${linkId} with value:`, itemValue);
+  // Debug log to see what values we're rendering - SPECIAL CHECK FOR MEDICATION
+  if (linkId === 'medication-name' || linkId === 'medication' || item.text?.toLowerCase().includes('medication')) {
+    console.log(`🔍🔍🔍 MEDICATION FIELD DEBUG:`);
+    console.log(`  linkId: "${linkId}"`);
+    console.log(`  item.text: "${item.text}"`);
+    console.log(`  itemValue:`, itemValue);
+    console.log(`  value object has medication-name?:`, value?.['medication-name']);
+    console.log(`  value object has medication?:`, value?.['medication']);
+    console.log(`  All available linkIds:`, Object.keys(value || {}).slice(0, 10));
+  }
+  
+  // Debug log to see what values we're rendering
+  if (isRequired && (!itemValue || itemValue === '')) {
+    console.log(`[QuestionnaireItemRenderer] 🔴 Required field EMPTY: ${linkId} (${item.text})`);
+  } else if (itemValue) {
+    console.log(`[QuestionnaireItemRenderer] ✅ Field has value: ${linkId} =`, itemValue);
   }
 
   // Render based on item type
@@ -112,7 +125,23 @@ function QuestionnaireItemRenderer({
         return (
           <select
             value={itemValue || ''}
-            onChange={(e) => onChange(linkId, e.target.value)}
+            onChange={(e) => {
+              // For dropdowns, we need to handle valueCoding properly
+              const selectedOption = item.answerOption?.find(
+                opt => (opt.valueCoding?.code || opt.valueString) === e.target.value
+              );
+              
+              if (selectedOption) {
+                // If the option has valueCoding, pass the full coding object
+                if (selectedOption.valueCoding) {
+                  onChange(linkId, selectedOption.valueCoding.code);
+                } else {
+                  onChange(linkId, e.target.value);
+                }
+              } else {
+                onChange(linkId, e.target.value);
+              }
+            }}
             disabled={!isEditable}
             className={`w-full text-xs text-zinc-600 border rounded px-2 py-1.5 focus:outline-none focus:ring-2 disabled:bg-zinc-50 disabled:text-zinc-500 ${
               needsAttention 
@@ -278,6 +307,8 @@ export default function QuestionnaireForm({
     if (fhirResource && fhirResource.resourceType === 'QuestionnaireResponse') {
       console.log('[QuestionnaireForm] ===== EXTRACTION START =====');
       console.log('[QuestionnaireForm] Full fhirResource:', JSON.stringify(fhirResource, null, 2));
+      console.log('[QuestionnaireForm] fhirResource.item count:', fhirResource.item?.length || 0);
+      console.log('[QuestionnaireForm] First 3 items:', fhirResource.item?.slice(0, 3));
       const extractedResponses: Record<string, any> = {};
       
       // Recursive function to extract answers from nested items
@@ -333,6 +364,15 @@ export default function QuestionnaireForm({
       console.log('[QuestionnaireForm] ===== EXTRACTION COMPLETE =====');
       console.log('[QuestionnaireForm] Final extracted responses:', extractedResponses);
       console.log('[QuestionnaireForm] Total fields extracted:', Object.keys(extractedResponses).length);
+      console.log('[QuestionnaireForm] LinkIds extracted:', Object.keys(extractedResponses));
+      console.log('[QuestionnaireForm] Setting responses state...');
+      
+      // WORKAROUND: If medication-name exists but medication doesn't, copy it over
+      if (extractedResponses['medication-name'] && !extractedResponses['medication']) {
+        console.log('[QuestionnaireForm] 🔧 Copying medication-name to medication field');
+        extractedResponses['medication'] = extractedResponses['medication-name'];
+      }
+      
       setResponses(extractedResponses);
       onResponseChange?.(extractedResponses);
       setHasAutofilledOnce(true);
