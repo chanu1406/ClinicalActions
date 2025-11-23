@@ -231,6 +231,21 @@ export async function POST(request: NextRequest) {
             },
             ...(resourceToCreate.participant || [])
         ];
+        
+        // CRITICAL: Medplum requires both start and end, or neither
+        // If start exists but no end, add a default 1-hour end time
+        if (resourceToCreate.start && !resourceToCreate.end) {
+            const startDate = new Date(resourceToCreate.start);
+            const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // Add 1 hour
+            resourceToCreate.end = endDate.toISOString();
+            console.log('[Execute] Added end time to Appointment (1 hour after start)');
+        }
+        // If neither start nor end, remove both to satisfy constraint
+        if (!resourceToCreate.start && !resourceToCreate.end) {
+            delete resourceToCreate.start;
+            delete resourceToCreate.end;
+            console.log('[Execute] Removed start/end from Appointment (neither specified)');
+        }
     } else {
         // For MedicationRequest/ServiceRequest, patient is subject
         resourceToCreate.subject = {
@@ -240,7 +255,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Ensure status is "draft" or "proposed"
-    if (resourceType === 'Appointment') {
+    if (finalResourceType === 'Appointment') {
         resourceToCreate.status = 'proposed';
     } else {
         resourceToCreate.status = 'draft';
@@ -248,18 +263,24 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('[Execute] Creating resource in Medplum:', {
-      resourceType,
+      resourceType: finalResourceType,
       patientId,
       status: resourceToCreate.status,
     });
+    console.log('[Execute] Full resource to create:', JSON.stringify(resourceToCreate, null, 2));
 
     // Create resource in Medplum
     let createdResource: Resource;
     try {
       createdResource = await medplum.createResource(resourceToCreate as any);
-      console.log(`[Execute] ✅ Successfully created ${resourceType} with ID: ${createdResource.id}`);
+      console.log(`[Execute] ✅ Successfully created ${finalResourceType} with ID: ${createdResource.id}`);
     } catch (createError: any) {
       console.error('[Execute] Medplum createResource failed:', createError);
+      console.error('[Execute] Error details:', {
+        message: createError.message,
+        outcome: createError.outcome,
+        issues: createError.outcome?.issue
+      });
       
       if (createError.message?.includes('Patient')) {
         return NextResponse.json(
@@ -274,7 +295,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { 
           error: 'Failed to create resource in Medplum',
-          details: createError.message || 'Unknown error'
+          details: createError.message || 'Unknown error',
+          outcome: createError.outcome
         },
         { status: 500 }
       );
