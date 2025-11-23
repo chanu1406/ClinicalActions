@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Loader2, Inbox, CheckCircle } from "lucide-react";
 import ActionCard from "./ActionCard";
 import { useSession } from "@/contexts/SessionContext";
+import { calculateCompletionPercentage } from "@/lib/completion-utils";
 
 export default function ActionList() {
   const { suggestedActions, approvedActions, isLoading, applyApprovedActions, error, clearError } = useSession();
@@ -50,7 +51,14 @@ export default function ActionList() {
     return acc;
   }, {} as Record<string, typeof suggestedActions>);
 
-  const canApply = approvedActions.length > 0 && !isLoading.apply;
+  // Check if all approved actions are 100% complete
+  const allActionsComplete = approvedActions.every(action => {
+    const completion = calculateCompletionPercentage(action);
+    return completion === 100;
+  });
+  
+  const canApply = approvedActions.length > 0 && !isLoading.apply && allActionsComplete;
+  const hasIncompleteActions = approvedActions.length > 0 && !allActionsComplete;
 
   return (
     <div className="space-y-6">
@@ -91,6 +99,12 @@ export default function ActionList() {
         {!canApply && approvedActions.length === 0 && (
           <p className="text-xs text-zinc-500 text-center mt-2">
             Approve at least one action to continue
+          </p>
+        )}
+        
+        {hasIncompleteActions && (
+          <p className="text-xs text-amber-600 text-center mt-2">
+            Complete all required fields in approved actions before applying
           </p>
         )}
       </div>

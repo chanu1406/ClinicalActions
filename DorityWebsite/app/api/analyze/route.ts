@@ -336,13 +336,23 @@ export async function POST(request: NextRequest) {
     // Build questionnaire context for the AI
     const questionnaireContext = availableQuestionnaires.length > 0
       ? `\n\nAVAILABLE QUESTIONNAIRES IN MEDPLUM:\n${availableQuestionnaires.map(q => {
-          const itemsSummary = q.items.map((item: any) => 
-            `  - linkId: "${item.linkId}", text: "${item.text}", type: ${item.type}${item.required ? ' (REQUIRED)' : ''}${
-              item.answerOption ? `, options: [${item.answerOption.map((opt: any) => 
-                opt.valueCoding?.display || opt.valueString
-              ).join(', ')}]` : ''
-            }`
-          ).join('\n');
+          const itemsSummary = q.items.map((item: any) => {
+            let optionsText = '';
+            if (item.answerOption && item.answerOption.length > 0) {
+              // Include BOTH code and display for choice fields so Claude knows exact codes to use
+              const optionsList = item.answerOption.map((opt: any) => {
+                if (opt.valueCoding) {
+                  return `{code: "${opt.valueCoding.code}", display: "${opt.valueCoding.display}"}`;
+                } else if (opt.valueString) {
+                  return `"${opt.valueString}"`;
+                }
+                return '';
+              }).filter(Boolean).join(', ');
+              optionsText = `, options: [${optionsList}]`;
+            }
+            
+            return `  - linkId: "${item.linkId}", text: "${item.text}", type: ${item.type}${item.required ? ' (REQUIRED)' : ''}${optionsText}`;
+          }).join('\n');
           
           return `\n**Questionnaire: ${q.name}** (ID: ${q.id}, Type: ${q.type})\nTitle: ${q.title || 'N/A'}\nDescription: ${q.description || 'N/A'}\nFields:\n${itemsSummary}\n`;
         }).join('\n')}\n\n**CRITICAL INSTRUCTIONS FOR USING QUESTIONNAIRES:**
@@ -354,7 +364,12 @@ export async function POST(request: NextRequest) {
 - Extract values from the transcript and match them to the appropriate linkIds
 - For patient demographic fields, use the EXACT patient data provided in the prompt
 - For fields not mentioned in the transcript, use intelligent defaults based on the field name and clinical context
-- For choice fields with answerOption, you MUST use one of the provided options exactly as specified (use valueCoding with code and display)
+- **CRITICAL FOR CHOICE FIELDS:** For fields with type "choice" and answerOption listed above:
+  * You MUST select ONE of the provided options
+  * ALWAYS use valueCoding format: {"valueCoding": {"code": "option_code", "display": "Option Display"}}
+  * Use the EXACT code and display from the answerOption list above
+  * NEVER leave choice fields empty or use valueString - ALWAYS use valueCoding
+  * If the transcript doesn't specify, choose the most clinically appropriate option from the list
 - For boolean fields, use valueBoolean (not valueString)
 - If a clinical action doesn't match any questionnaire type, skip that action entirely
 
@@ -369,7 +384,15 @@ For a group linkId "exam-details" containing "examType" and "bodyRegion", format
   ]
 }
 
-**YOU MUST INCLUDE AN ITEM (or nested items for groups) FOR EVERY SINGLE LINKID IN THE QUESTIONNAIRE!**`
+**CHOICE FIELD EXAMPLE:**
+For a choice field like "Is a referral needed?" with options ["Yes", "No"]:
+{
+  "linkId": "referral-needed",
+  "answer": [{"valueCoding": {"code": "yes", "display": "Yes"}}]
+}
+
+**YOU MUST INCLUDE AN ITEM (or nested items for groups) FOR EVERY SINGLE LINKID IN THE QUESTIONNAIRE!**
+**YOU MUST SELECT A VALUE FOR EVERY CHOICE FIELD FROM ITS ANSWEROPTIO NS - NEVER LEAVE THEM EMPTY!**`
       : '';
 
     // Build user message

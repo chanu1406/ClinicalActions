@@ -56,9 +56,19 @@ function QuestionnaireItemRenderer({
   // Render based on item type
   const renderInput = () => {
     // Check if field is empty and required for highlighting
-    const isEmpty = !itemValue || itemValue === '';
+    const isEmpty = !itemValue || itemValue === '' || itemValue === 'Select an option...' || itemValue === 'Select an option';
     // HIGHLIGHT ALL EMPTY FIELDS, not just required ones
     const needsAttention = isEmpty && isEditable;
+    
+    // Debug logging for dropdowns
+    if (item.type === 'choice') {
+      console.log(`[Dropdown] "${item.text}" (${linkId}):`, {
+        itemValue,
+        isEmpty,
+        isEditable,
+        needsAttention
+      });
+    }
     
     switch (item.type) {
       case 'string':

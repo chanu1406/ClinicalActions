@@ -4,15 +4,21 @@ import { useState, useEffect } from "react";
 import { Pill, Stethoscope, Image, FlaskConical, UserPlus, Calendar, FileText, AlertTriangle, CheckCircle2, Check, X, FileEdit, XCircle, Mail, Send } from "lucide-react";
 import { useSession, type SuggestedAction } from "@/contexts/SessionContext";
 import QuestionnaireForm from "./QuestionnaireForm";
+import { calculateCompletionPercentage as calcCompletion } from "@/lib/completion-utils";
 
 interface ActionCardProps {
   action: SuggestedAction;
 }
 
-// Calculate completion percentage based on questionnaire fields
-// Note: We need the questionnaire definition to know which fields are required
-// This function will be called with the action that has the questionnaire metadata
+// Use shared completion calculation utility
+// Kept as wrapper for backward compatibility
 function calculateCompletionPercentage(action: SuggestedAction, questionnaireDef?: any): number {
+  return calcCompletion(action, questionnaireDef);
+}
+
+// OLD IMPLEMENTATION - now using shared utility
+/*
+function calculateCompletionPercentageOld(action: SuggestedAction, questionnaireDef?: any): number {
   // If scheduling, always 100% if essential fields exist
   if (action.type === 'scheduling') return 100;
 
@@ -134,6 +140,7 @@ function calculateCompletionPercentage(action: SuggestedAction, questionnaireDef
   const filledFields = fields.filter(f => f && f !== "").length;
   return Math.round((filledFields / fields.length) * 100);
 }
+*/
 
 // Form field component for editable fields
 function FormField({ 
@@ -327,7 +334,7 @@ export default function ActionCard({ action }: ActionCardProps) {
   const Icon = TYPE_ICONS[action.type] || FileText;
   const isApproved = action.status === "approved";
   const isRejected = action.status === "rejected";
-  const completionPercentage = calculateCompletionPercentage(action, questionnaireDef);
+  const completionPercentage = calculateCompletionPercentage(action);
 
   if (isRejected) {
     return (
@@ -496,7 +503,13 @@ export default function ActionCard({ action }: ActionCardProps) {
                 {action.type === 'scheduling' ? (
                     <button
                         onClick={handleApprove}
-                        className="px-4 py-1.5 text-xs font-semibold text-white bg-[#7C2D3E] hover:bg-[#5A1F2D] rounded-full shadow-sm transition-all flex items-center gap-1.5"
+                        disabled={completionPercentage < 100}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-full shadow-sm transition-all flex items-center gap-1.5 ${
+                          completionPercentage < 100
+                            ? 'bg-zinc-300 text-zinc-500 cursor-not-allowed'
+                            : 'text-white bg-[#7C2D3E] hover:bg-[#5A1F2D]'
+                        }`}
+                        title={completionPercentage < 100 ? 'Complete all required fields to approve' : ''}
                     >
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         Approve
@@ -504,7 +517,13 @@ export default function ActionCard({ action }: ActionCardProps) {
                 ) : (
                     <button
                         onClick={handleApprove}
-                        className="px-4 py-1.5 text-xs font-semibold text-white bg-[#7C2D3E] hover:bg-[#5A1F2D] rounded-full shadow-sm transition-all flex items-center gap-1.5"
+                        disabled={completionPercentage < 100}
+                        className={`px-4 py-1.5 text-xs font-semibold rounded-full shadow-sm transition-all flex items-center gap-1.5 ${
+                          completionPercentage < 100
+                            ? 'bg-zinc-300 text-zinc-500 cursor-not-allowed'
+                            : 'text-white bg-[#7C2D3E] hover:bg-[#5A1F2D]'
+                        }`}
+                        title={completionPercentage < 100 ? 'Complete all required fields to approve' : ''}
                     >
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         Approve & Sign
