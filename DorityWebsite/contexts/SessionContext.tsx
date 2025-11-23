@@ -13,6 +13,14 @@ export interface PatientSummary {
   allergies: string[];
   preferredPharmacy: string;
   insurance: string;
+  // Additional fields for questionnaire autofill
+  gender?: string;
+  age?: number;
+  phone?: string;
+  email?: string;
+  address?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
 }
 
 export interface SuggestedAction {
@@ -167,6 +175,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({
           transcript: state.transcript,
           patientContext: state.patient ? `Patient: ${state.patient.name}` : undefined,
+          patient: state.patient, // Include full patient data for autofill
         }),
       });
 

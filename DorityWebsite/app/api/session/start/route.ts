@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMedplumClient } from "@/lib/medplum-client";
 import { Patient } from "@medplum/fhirtypes";
+import { extractPatientData } from "@/lib/patient-utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,34 +14,66 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch real patient from Medplum
+    // Fetch real patient from Medplum with ALL fields
     const medplum = await getMedplumClient();
     const patient = await medplum.readResource("Patient", patientId);
 
-    // Extract patient details
-    const firstName = patient.name?.[0]?.given?.[0] || "";
-    const lastName = patient.name?.[0]?.family || "";
-    const fullName = `${firstName} ${lastName}`.trim() || "Unknown Patient";
-    const dob = patient.birthDate || "Unknown";
-    const mrn = patient.identifier?.find(id => id.type?.coding?.[0]?.code === "MR")?.value || "N/A";
+    // Extract comprehensive patient data using utility
+    const patientData = extractPatientData(patient);
+    
+    console.log('[Session Start] Extracted patient data:', {
+      id: patientData.id,
+      name: patientData.fullName,
+      hasPhone: !!patientData.primaryPhone,
+      hasEmail: !!patientData.email,
+      hasAddress: !!patientData.address,
+      emergencyContacts: patientData.emergencyContacts.length
+    });
 
-    // Build patient summary
+    // Build patient summary for session context
     const patientSummary = {
-      id: patient.id!,
-      name: fullName,
-      mrn: mrn,
-      dob: dob,
+      id: patientData.id,
+      name: patientData.fullName,
+      mrn: patientData.mrn,
+      dob: patientData.dateOfBirth,
       keyProblems: "Loading from medical history...",
       currentMeds: "Loading from medication list...",
       allergies: [] as string[],
       preferredPharmacy: "Not specified",
       insurance: "Not specified",
+      // Include additional fields for questionnaire autofill
+      gender: patientData.gender,
+      age: patientData.age,
+      phone: patientData.primaryPhone || patientData.mobilePhone,
+      email: patientData.email,
+      address: patientData.address?.full,
+      emergencyContactName: patientData.emergencyContacts[0]?.name,
+      emergencyContactPhone: patientData.emergencyContacts[0]?.phone,
     };
+
+    // Build detailed history summary
+    const historySummary = [
+      `Patient: ${patientData.fullName}`,
+      patientData.age ? `Age: ${patientData.age} years` : '',
+      `Date of Birth: ${patientData.dateOfBirth}`,
+      `MRN: ${patientData.mrn}`,
+      patientData.gender ? `Gender: ${patientData.gender}` : '',
+      patientData.maritalStatus ? `Marital Status: ${patientData.maritalStatus}` : '',
+      '',
+      patientData.primaryPhone ? `Phone: ${patientData.primaryPhone}` : '',
+      patientData.email ? `Email: ${patientData.email}` : '',
+      patientData.address ? `Address: ${patientData.address.full}` : '',
+      '',
+      patientData.emergencyContacts.length > 0 ? `Emergency Contact: ${patientData.emergencyContacts[0].name}${patientData.emergencyContacts[0].phone ? ` (${patientData.emergencyContacts[0].phone})` : ''}` : '',
+      '',
+      'Note: Full medical history available in EMR'
+    ].filter(Boolean).join('\n');
 
     return NextResponse.json({
       sessionId: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       patient: patientSummary,
-      historySummary: `Patient: ${fullName}\nDate of Birth: ${dob}\nMRN: ${mrn}\n\nNote: Full medical history available in EMR`,
+      patientData: patientData, // Full patient data for questionnaire autofill
+      historySummary,
     });
   } catch (error) {
     console.error("[Session Start] Error:", error);
