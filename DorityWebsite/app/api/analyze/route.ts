@@ -15,6 +15,8 @@ interface AnalyzeRequest {
 interface ClinicalActionResponse {
   type: 'medication' | 'lab' | 'imaging' | 'referral' | 'followup';
   description: string;
+  questionnaireId?: string; // Optional: ID of the Medplum Questionnaire to use
+  questionnaireName?: string; // Optional: Human-readable name of the questionnaire
   resource: MedicationRequest | ServiceRequest | any;
 }
 
@@ -34,7 +36,14 @@ CRITICAL RULES:
    - ServiceRequest for labs, imaging, referrals
    - QuestionnaireResponse for mental health screenings (PHQ-4)
 4. Include a human-readable "description" for UI display
-Categorize each action with a "type": "medication", "lab", "imaging", "referral", "followup", or "questionnaire_response"
+5. Categorize each action with a "type": "medication", "lab", "imaging", "referral", "followup", or "questionnaire_response"
+6. **QUESTIONNAIRE MATCHING RULES - STRICT**:
+   - When the user message includes AVAILABLE QUESTIONNAIRES, you MUST ONLY select from that exact list
+   - NEVER create an action type unless a matching questionnaire exists in the provided list
+   - If a clinical action doesn't have a matching questionnaire, DO NOT include that action
+   - Match action type to questionnaire type: medication→medication, lab→lab, imaging→imaging, referral→referral, followup→followup
+   - Include "questionnaireId" and "questionnaireName" fields for EVERY action
+   - If no questionnaire matches the clinical intent, skip that action entirely
 
 OUTPUT FORMAT (raw JSON only):
 {
@@ -42,6 +51,8 @@ OUTPUT FORMAT (raw JSON only):
     {
       "type": "medication",
       "description": "Prescribe Amoxicillin 500mg three times daily for 7 days",
+      "questionnaireId": "abc-123-def",
+      "questionnaireName": "MedicationPrescriptionOrderForm",
       "resource": {
         "resourceType": "MedicationRequest",
         "status": "draft",
@@ -75,6 +86,8 @@ OUTPUT FORMAT (raw JSON only):
     {
       "type": "lab",
       "description": "Order Complete Blood Count (CBC)",
+      "questionnaireId": "xyz-789-ghi",
+      "questionnaireName": "BloodTestOrderForm",
       "resource": {
         "resourceType": "ServiceRequest",
         "status": "draft",
@@ -173,12 +186,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Fetch available questionnaires from Medplum first
+    let availableQuestionnaires: any[] = [];
+    try {
+      const questionnairesResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/questionnaires`);
+      if (questionnairesResponse.ok) {
+        const data = await questionnairesResponse.json();
+        availableQuestionnaires = data.questionnaires || [];
+        console.log(`[Analyze] Found ${availableQuestionnaires.length} available questionnaires in Medplum`);
+      }
+    } catch (err) {
+      console.warn('[Analyze] Could not fetch questionnaires, proceeding with generic forms', err);
+    }
+
+    // Build questionnaire context for the AI
+    const questionnaireContext = availableQuestionnaires.length > 0
+      ? `\n\nAVAILABLE QUESTIONNAIRES IN MEDPLUM:\n${availableQuestionnaires.map(q => 
+          `- ${q.name} (ID: ${q.id}, Type: ${q.type}): ${q.description || q.title || 'No description'}`
+        ).join('\n')}\n\nCRITICAL: You can ONLY create actions for types that have questionnaires above. If a clinical action doesn't match any questionnaire type, DO NOT include it in your response. For example, if there's no referral questionnaire, skip referral actions. If there's no followup questionnaire, skip followup actions.`
+      : '';
+
     // Build user message
     let userMessage = `Analyze this clinical consultation transcript and extract actionable clinical intents:\n\n${transcript}`;
     
     if (patientContext) {
       userMessage += `\n\nPatient Context:\n${patientContext}`;
     }
+
+    userMessage += questionnaireContext;
 
     // Call Claude
     console.log('[Analyze] Calling Claude API...');

@@ -27,6 +27,8 @@ export interface SuggestedAction {
   safetyFlag?: "high" | "medium" | "low" | null;
   safetyMessage?: string;
   rationale: string;
+  questionnaireId?: string; // Medplum Questionnaire ID
+  questionnaireName?: string; // Human-readable questionnaire name
   fhirPreview: {
     resourceType: string;
     status: string;
@@ -179,6 +181,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         categoryLabel: action.type.charAt(0).toUpperCase() + action.type.slice(1),
         details: action.description,
         rationale: `Extracted from transcript by AI`,
+        questionnaireId: action.questionnaireId,
+        questionnaireName: action.questionnaireName,
         fhirPreview: action.resource,
       }));
 
