@@ -2,13 +2,17 @@
 
 import { useState, useEffect } from "react";
 import { Search, Loader2 } from "lucide-react";
-import { useSession } from "@/contexts/SessionContext";
+import { useSession, PatientSelection } from "@/contexts/SessionContext";
 
 // Real Medplum patient interface
 interface MedplumPatient {
   patientId: string;
   patientFirstName: string | undefined;
   patientLastName: string | undefined;
+  patientAddress?: string;
+  preferredPharmacy?: string;
+  generalPractitioner?: string;
+  organizationAddress?: string;
 }
 
 export default function PatientSearchPanel() {
@@ -32,7 +36,7 @@ export default function PatientSearchPanel() {
         }
 
         const data = await response.json();
-        setAllPatients(data);
+        setAllPatients(data.patients ?? []);
         setFetchError(null);
       } catch (err) {
         console.error('Error fetching patients:', err);
@@ -78,7 +82,17 @@ export default function PatientSearchPanel() {
 
   const handleSelectPatient = async (patientId: string) => {
     clearError();
-    await startSession(patientId);
+    const selectedPatient = allPatients.find((p) => p.patientId === patientId);
+    const selection: PatientSelection | undefined = selectedPatient
+      ? {
+          patientAddress: selectedPatient.patientAddress,
+          preferredPharmacy: selectedPatient.preferredPharmacy,
+          generalPractitioner: selectedPatient.generalPractitioner,
+          organizationAddress: selectedPatient.organizationAddress,
+        }
+      : undefined;
+
+    await startSession(patientId, selection);
   };
 
   return (

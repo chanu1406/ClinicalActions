@@ -3,6 +3,13 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
 
 // TypeScript interfaces
+export interface PatientSelection {
+  patientAddress?: string;
+  preferredPharmacy?: string;
+  generalPractitioner?: string;
+  organizationAddress?: string;
+}
+
 export interface PatientSummary {
   id: string;
   name: string;
@@ -13,6 +20,9 @@ export interface PatientSummary {
   allergies: string[];
   preferredPharmacy: string;
   insurance: string;
+  address: string;
+  generalPractitioner: string;
+  organizationAddress: string;
 }
 
 export interface SuggestedAction {
@@ -63,7 +73,7 @@ interface SessionContextType extends SessionState {
   setCurrentStep: (step: 1 | 2 | 3 | 4) => void;
   setTranscript: (transcript: string) => void;
   setAftercareSummary: (summary: string) => void;
-  startSession: (patientId: string) => Promise<void>;
+  startSession: (patientId: string, patientSelection?: PatientSelection) => Promise<void>;
   analyzeTranscript: () => Promise<void>;
   updateActionStatus: (actionId: string, status: "pending" | "approved" | "rejected") => void;
   updateAction: (actionId: string, updates: Partial<SuggestedAction>) => void;
@@ -112,7 +122,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, error: null }));
   }, []);
 
-  const startSession = useCallback(async (patientId: string) => {
+  const startSession = useCallback(async (patientId: string, patientSelection?: PatientSelection) => {
     setState((prev) => ({
       ...prev,
       isLoading: { ...prev.isLoading, startSession: true },
@@ -123,7 +133,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const response = await fetch("/api/session/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patientId }),
+        body: JSON.stringify({ patientId, patientSelection }),
       });
 
       if (!response.ok) {
@@ -343,6 +353,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           approvedActions: state.approvedActions,
           historySummary: state.historySummary,
           transcript: state.transcript,
+          patient: state.patient,
         }),
       });
 
