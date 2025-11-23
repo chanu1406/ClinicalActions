@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Download, Loader2, AlertCircle, Check, ExternalLink } from "lucide-react";
+import { useSession } from "@/contexts/SessionContext";
 
 interface HeidiSession {
   id: string;
@@ -14,6 +15,7 @@ interface HeidiTranscriptFetcherProps {
 }
 
 export default function HeidiTranscriptFetcher({ onTranscriptFetched, disabled }: HeidiTranscriptFetcherProps) {
+  const { patient } = useSession();
   const [sessions, setSessions] = useState<HeidiSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
@@ -35,9 +37,16 @@ export default function HeidiTranscriptFetcher({ onTranscriptFetched, disabled }
       const data = await response.json();
       
       if (data.success && data.sessions) {
-        setSessions(data.sessions);
-        if (data.sessions.length > 0) {
-          setSelectedSessionId(data.sessions[0].id);
+        let availableSessions = data.sessions;
+
+        // Filter by patient's assigned session if available
+        if (patient?.heidiSessionId) {
+          availableSessions = data.sessions.filter((s: HeidiSession) => s.id === patient.heidiSessionId);
+        }
+
+        setSessions(availableSessions);
+        if (availableSessions.length > 0) {
+          setSelectedSessionId(availableSessions[0].id);
         }
       } else {
         throw new Error(data.error || 'No sessions available');
@@ -97,98 +106,88 @@ export default function HeidiTranscriptFetcher({ onTranscriptFetched, disabled }
     }
   };
 
-  // Auto-load sessions on mount
-  useState(() => {
+  // Auto-load sessions on mount or when patient changes
+  useEffect(() => {
     if (!disabled) {
       loadSessions();
     }
-  });
+  }, [disabled, patient?.heidiSessionId]);
 
   return (
-    <div className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200/50 rounded-xl p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ExternalLink className="w-4 h-4 text-purple-600" />
-          <h3 className="text-sm font-semibold text-purple-900">Fetch from Heidi API</h3>
+    <div className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200/50 rounded-xl p-4 space-y-3 min-h-[140px] flex flex-col justify-center">
+      {isLoadingSessions ? (
+        <div className="flex flex-col items-center justify-center py-2 space-y-2">
+          <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
+          <p className="text-xs font-medium text-purple-700 animate-pulse">Loading available sessions...</p>
         </div>
-        {success && (
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/50">
-            <Check className="w-3 h-3" />
-            Loaded
-          </span>
-        )}
-      </div>
-
-      <p className="text-xs text-purple-700">
-        Load a consultation transcript from Heidi Health's API
-      </p>
-
-      {sessions.length === 0 && !isLoadingSessions && (
-        <button
-          onClick={loadSessions}
-          disabled={disabled || isLoadingSessions}
-          className="w-full px-3 py-2 text-sm font-medium text-purple-700 bg-white hover:bg-purple-50 border border-purple-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {isLoadingSessions ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading sessions...
-            </>
-          ) : (
-            <>
+      ) : (
+        <>
+          {sessions.length === 0 && (
+            <button
+              onClick={loadSessions}
+              disabled={disabled}
+              className="w-full px-3 py-2 text-sm font-medium text-purple-700 bg-white hover:bg-purple-50 border border-purple-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
               <Download className="w-4 h-4" />
               Load Available Sessions
-            </>
+            </button>
           )}
-        </button>
-      )}
 
-      {sessions.length > 0 && (
-        <div className="space-y-2">
-          <label className="block text-xs font-medium text-purple-900">
-            Select Session
-          </label>
-          <select
-            value={selectedSessionId}
-            onChange={(e) => setSelectedSessionId(e.target.value)}
-            disabled={disabled || isLoadingTranscript}
-            className="w-full px-3 py-2 text-sm bg-white border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {sessions.map((session) => (
-              <option key={session.id} value={session.id}>
-                {session.label} ({session.id.substring(0, 20)}...)
-              </option>
-            ))}
-          </select>
+          {sessions.length > 0 && (
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-purple-900">
+                Select Session
+              </label>
+              <select
+                value={selectedSessionId}
+                onChange={(e) => setSelectedSessionId(e.target.value)}
+                disabled={disabled || isLoadingTranscript}
+                className="w-full px-3 py-2 text-sm bg-white border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {sessions.map((session) => (
+                  <option key={session.id} value={session.id}>
+                    {session.label} ({session.id.substring(0, 20)}...)
+                  </option>
+                ))}
+              </select>
 
-          <button
-            onClick={fetchTranscript}
-            disabled={disabled || isLoadingTranscript || !selectedSessionId}
-            className="w-full px-3 py-2.5 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
-          >
-            {isLoadingTranscript ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Fetching...
-              </>
-            ) : (
-              <>
-                <Download className="w-4 h-4" />
-                Fetch Transcript
-              </>
-            )}
-          </button>
-        </div>
-      )}
+              <button
+                onClick={fetchTranscript}
+                disabled={disabled || isLoadingTranscript || !selectedSessionId}
+                className={`w-full px-3 py-2.5 text-sm font-semibold text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm ${
+                  success ? "bg-emerald-600 hover:bg-emerald-700" : "bg-purple-600 hover:bg-purple-700"
+                }`}
+              >
+                {isLoadingTranscript ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Fetching...
+                  </>
+                ) : success ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Transcript Loaded
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    Fetch Transcript
+                  </>
+                )}
+              </button>
+            </div>
+          )}
 
-      {error && (
-        <div className="bg-red-50 border border-red-200/50 rounded-lg p-3 flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-xs font-medium text-red-900">Error</p>
-            <p className="text-xs text-red-700 mt-0.5">{error}</p>
-          </div>
-        </div>
+          {error && (
+            <div className="bg-red-50 border border-red-200/50 rounded-lg p-3 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-red-900">Error</p>
+                <p className="text-xs text-red-700 mt-0.5">{error}</p>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

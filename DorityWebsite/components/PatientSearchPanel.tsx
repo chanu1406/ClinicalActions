@@ -83,12 +83,31 @@ export default function PatientSearchPanel() {
   const handleSelectPatient = async (patientId: string) => {
     clearError();
     const selectedPatient = allPatients.find((p) => p.patientId === patientId);
+    const patientIndex = allPatients.findIndex((p) => p.patientId === patientId);
+    
+    // Hardcoded session IDs as requested
+    // Patient 1 -> Session 3
+    // Patient 2 -> Session 4
+    // Patient 3 -> Session 6
+    // Patient 4 -> Session 7
+    const ASSIGNED_SESSIONS = [
+      '209429578973190336673242710141917128963', // Session 3
+      '316272209747326581157737075663692625433', // Session 4
+      '189878368687884891206528465309407076433', // Session 6
+      '179340005192510878551324680590964837821', // Session 7
+    ];
+
+    const heidiSessionId = patientIndex >= 0 && patientIndex < ASSIGNED_SESSIONS.length 
+      ? ASSIGNED_SESSIONS[patientIndex] 
+      : undefined;
+
     const selection: PatientSelection | undefined = selectedPatient
       ? {
           patientAddress: selectedPatient.patientAddress,
           preferredPharmacy: selectedPatient.preferredPharmacy,
           generalPractitioner: selectedPatient.generalPractitioner,
           organizationAddress: selectedPatient.organizationAddress,
+          heidiSessionId,
         }
       : undefined;
 

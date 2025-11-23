@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
     const preferredPharmacy = findPreferredPharmacy(patient) || patientSelection?.preferredPharmacy || "Not specified";
     const generalPractitioner = patientSelection?.generalPractitioner || patient.generalPractitioner?.[0]?.display || "Not specified";
     const organizationAddress = patientSelection?.organizationAddress || "";
+    const heidiSessionId = patientSelection?.heidiSessionId;
     
     console.log('[Session Start] Extracted patient data:', {
       id: patientData.id,
@@ -116,6 +117,7 @@ export async function POST(request: NextRequest) {
       address: patientAddress,
       generalPractitioner,
       organizationAddress,
+      heidiSessionId,
       insurance: "Not specified",
       // Include additional fields for questionnaire autofill
       gender: patientData.gender,
