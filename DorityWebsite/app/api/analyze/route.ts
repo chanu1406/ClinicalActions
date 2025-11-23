@@ -367,9 +367,11 @@ export async function POST(request: NextRequest) {
 - **CRITICAL FOR CHOICE FIELDS:** For fields with type "choice" and answerOption listed above:
   * You MUST select ONE of the provided options
   * ALWAYS use valueCoding format: {"valueCoding": {"code": "option_code", "display": "Option Display"}}
-  * Use the EXACT code and display from the answerOption list above
-  * NEVER leave choice fields empty or use valueString - ALWAYS use valueCoding
-  * If the transcript doesn't specify, choose the most clinically appropriate option from the list
+  * Use the EXACT code and EXACT display from the answerOption list above - DO NOT modify or paraphrase
+  * Copy the code and display EXACTLY as shown - character for character
+  * NEVER invent your own codes or display text - only use what's in the options list
+  * If the transcript doesn't specify which option, choose the most clinically appropriate option from the list
+  * Example: If options show {code: "78816", display: "Whole Body (head to toe protocol)"}, you MUST use exactly that code and display
 - For boolean fields, use valueBoolean (not valueString)
 - If a clinical action doesn't match any questionnaire type, skip that action entirely
 
