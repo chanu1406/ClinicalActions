@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Pill, Stethoscope, Image, FlaskConical, UserPlus, Calendar, FileText, AlertTriangle, CheckCircle2, Check, X, FileEdit, XCircle, Mail, Send } from "lucide-react";
 import { useSession, type SuggestedAction } from "@/contexts/SessionContext";
 import QuestionnaireForm from "./QuestionnaireForm";
@@ -10,15 +10,33 @@ interface ActionCardProps {
 }
 
 // Calculate completion percentage based on questionnaire fields
-function calculateCompletionPercentage(action: SuggestedAction): number {
+// Note: We need the questionnaire definition to know which fields are required
+// This function will be called with the action that has the questionnaire metadata
+function calculateCompletionPercentage(action: SuggestedAction, questionnaireDef?: any): number {
   // If scheduling, always 100% if essential fields exist
   if (action.type === 'scheduling') return 100;
 
-  // If action has a QuestionnaireResponse, calculate based on filled items
+  // If action has a QuestionnaireResponse, calculate based on filled REQUIRED items only
   if (action.fhirPreview?.resourceType === 'QuestionnaireResponse' && action.fhirPreview?.item && Array.isArray(action.fhirPreview.item)) {
     const items = action.fhirPreview.item;
     
-    // Recursively count all items (including nested ones)
+    // Build a map of linkId -> required status from questionnaire definition
+    const requiredFields = new Set<string>();
+    if (questionnaireDef?.item) {
+      const findRequired = (qItems: any[]) => {
+        for (const qItem of qItems) {
+          if (qItem.required === true && qItem.linkId) {
+            requiredFields.add(qItem.linkId);
+          }
+          if (qItem.item && Array.isArray(qItem.item)) {
+            findRequired(qItem.item);
+          }
+        }
+      };
+      findRequired(questionnaireDef.item);
+    }
+    
+    // Recursively count ONLY REQUIRED items
     const countItems = (itemList: any[]): { total: number; filled: number } => {
       let total = 0;
       let filled = 0;
@@ -30,23 +48,31 @@ function calculateCompletionPercentage(action: SuggestedAction): number {
           total += nested.total;
           filled += nested.filled;
         } else {
-          // It's a question field - count it
-          total += 1;
-          
-          // Check if it has a meaningful answer
-          if (item.answer && item.answer.length > 0) {
-            const answer = item.answer[0];
-            const hasValue = 
-              (answer.valueString && answer.valueString.trim() !== '' && answer.valueString !== 'N/A' && answer.valueString !== 'Unknown') ||
-              (answer.valueBoolean !== undefined) ||
-              (answer.valueInteger !== undefined) ||
-              (answer.valueDecimal !== undefined) ||
-              (answer.valueDate && answer.valueDate !== '') ||
-              (answer.valueDateTime && answer.valueDateTime !== '') ||
-              (answer.valueCoding && answer.valueCoding.code);
+          // Only count if this field is required
+          if (requiredFields.has(item.linkId)) {
+            total += 1;
             
-            if (hasValue) {
-              filled += 1;
+            // Check if it has a meaningful answer
+            if (item.answer && item.answer.length > 0) {
+              const answer = item.answer[0];
+              
+              // Check for any type of meaningful value
+              const hasStringValue = answer.valueString && answer.valueString.trim() !== '' && answer.valueString !== 'N/A' && answer.valueString !== 'Unknown';
+              const hasBooleanValue = answer.valueBoolean !== undefined && answer.valueBoolean !== null;
+              const hasIntegerValue = answer.valueInteger !== undefined && answer.valueInteger !== null && !isNaN(answer.valueInteger);
+              const hasDecimalValue = answer.valueDecimal !== undefined && answer.valueDecimal !== null && !isNaN(answer.valueDecimal);
+              const hasDateValue = (answer.valueDate && answer.valueDate !== '') || (answer.valueDateTime && answer.valueDateTime !== '');
+              const hasCodingValue = answer.valueCoding && (answer.valueCoding.code || answer.valueCoding.display);
+              
+              const hasValue = hasStringValue || hasBooleanValue || hasIntegerValue || hasDecimalValue || hasDateValue || hasCodingValue;
+              
+              if (hasValue) {
+                filled += 1;
+              } else {
+                console.log(`[Completion] Empty required field: ${item.linkId}`, answer);
+              }
+            } else {
+              console.log(`[Completion] No answer for required field: ${item.linkId}`);
             }
           }
         }
@@ -56,7 +82,9 @@ function calculateCompletionPercentage(action: SuggestedAction): number {
     };
     
     const counts = countItems(items);
-    if (counts.total === 0) return 50; // Default if no items found
+    console.log(`[Completion] Required fields: ${counts.total}, Filled: ${counts.filled}, Percentage: ${Math.round((counts.filled / counts.total) * 100)}%`);
+    console.log('[Completion] Required field linkIds:', Array.from(requiredFields));
+    if (counts.total === 0) return 100; // No required fields = 100%
     return Math.round((counts.filled / counts.total) * 100);
   }
 
@@ -155,15 +183,59 @@ export default function ActionCard({ action }: ActionCardProps) {
   const [showForm, setShowForm] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
   const [isEditingForm, setIsEditingForm] = useState(false);
+  const [questionnaireDef, setQuestionnaireDef] = useState<any>(null);
+
+  // Fetch questionnaire definition to know which fields are required
+  useEffect(() => {
+    if (action.questionnaireId) {
+      fetch(`/api/questionnaire/${action.questionnaireId}`)
+        .then(res => res.json())
+        .then(data => setQuestionnaireDef(data.questionnaire))
+        .catch(err => console.error('Failed to load questionnaire def:', err));
+    }
+  }, [action.questionnaireId]);
   
+  // Helpers for building/augmenting scheduling email body
+  const buildDefaultEmailBody = (act: any) => {
+    const reason = act.reason || act.rationale || '';
+    const when = act.when || 'As soon as possible';
+    const insurance = patient?.insurance ?? 'Not provided';
+    const practitioner = patient?.generalPractitioner ?? 'Not provided';
+    const practitionerAddress = patient?.organizationAddress ?? 'Not provided';
+
+    return `Hi,\n\nWe would like to schedule a follow-up meeting.\n\nReason: ${reason}\nSuggested Time: ${when}\n\nInsurance: ${insurance}\nPractitioner: ${practitioner}\nPractitioner Address: ${practitionerAddress}\n\nBest regards,\nClinical Team`;
+  };
+
+  const augmentBody = (body: string | undefined, act: any) => {
+    const insurance = patient?.insurance ?? 'Not provided';
+    const practitioner = patient?.generalPractitioner ?? 'Not provided';
+    const practitionerAddress = patient?.organizationAddress ?? 'Not provided';
+
+    if (!body || body.trim() === '') return buildDefaultEmailBody(act);
+
+    const lower = body.toLowerCase();
+    let augmented = body;
+    if (!lower.includes('insurance:')) {
+      augmented += `\n\nInsurance: ${insurance}`;
+    }
+    if (!lower.includes('practitioner:')) {
+      augmented += `\nPractitioner: ${practitioner}`;
+    }
+    if (!lower.includes('practitioner address:') && !lower.includes('practice address:')) {
+      augmented += `\nPractitioner Address: ${practitionerAddress}`;
+    }
+
+    return augmented;
+  };
+
   // Initialize form data, including default email for scheduling
   const [formData, setFormData] = useState<any>(() => {
     if (action.type === 'scheduling') {
       return {
         ...action.fhirPreview,
         email: action.email || 'adarsh.danda1@gmail.com',
-        subject: action.subject || (action.title ? `Follow-up: ${action.title}` : 'Follow-up Meeting'),
-        body: action.body || `Hi,\n\nWe would like to schedule a follow-up meeting.\n\nReason: ${action.reason || action.rationale}\nSuggested Time: ${action.when || 'As soon as possible'}\n\nBest regards,\nClinical Team`
+        subject: action.subject || (action.title ? `Follow-up: ${action.title}` : 'Follow-up Email'),
+        body: action.body ? augmentBody(action.body, action) : buildDefaultEmailBody(action),
       };
     }
     return action.fhirPreview;
@@ -189,12 +261,13 @@ export default function ActionCard({ action }: ActionCardProps) {
 
   const handleSaveForm = () => {
     updateAction(action.id, { 
-        fhirPreview: formData, // Keep fhirPreview updated
-        // For scheduling, we also update top-level props if changed
-        ...(action.type === 'scheduling' ? {
-            email: formData.email,
-            // potentially other fields
-        } : {})
+      fhirPreview: formData, // Keep fhirPreview updated
+      // For scheduling, we also update top-level props if changed
+      ...(action.type === 'scheduling' ? {
+        email: formData.email,
+        subject: formData.subject,
+        body: formData.body,
+      } : {})
     });
     setIsEditingForm(false);
     setShowFormModal(false);
@@ -205,10 +278,22 @@ export default function ActionCard({ action }: ActionCardProps) {
     setIsEditingForm(true);
   };
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (showFormModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showFormModal]);
+
   const Icon = TYPE_ICONS[action.type] || FileText;
   const isApproved = action.status === "approved";
   const isRejected = action.status === "rejected";
-  const completionPercentage = calculateCompletionPercentage(action);
+  const completionPercentage = calculateCompletionPercentage(action, questionnaireDef);
 
   if (isRejected) {
     return (

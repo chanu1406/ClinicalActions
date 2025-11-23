@@ -8,6 +8,7 @@ export interface PatientSelection {
   preferredPharmacy?: string;
   generalPractitioner?: string;
   organizationAddress?: string;
+  heidiSessionId?: string;
 }
 
 export interface PatientSummary {
@@ -23,6 +24,7 @@ export interface PatientSummary {
   address: string;
   generalPractitioner: string;
   organizationAddress: string;
+  heidiSessionId?: string;
   // Additional fields for questionnaire autofill
   gender?: string;
   age?: number;

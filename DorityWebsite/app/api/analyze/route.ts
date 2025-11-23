@@ -64,7 +64,14 @@ TYPE DEFINITIONS:
      - "reason": Internal reason for the scheduling (brief).
      - "when": Suggested time (brief).
      - "subject": A user-friendly email subject line.
-     - "body": A warm, user-friendly email body that reads through the context in the transcript, summarizes after-meeting instructions, and includes follow-up meeting time if necessary. Do not include any other context or meta-text.
+     - "body": A warm, user-friendly email body that:
+       * Summarizes key information from the consultation
+       * Includes follow-up instructions and timing if applicable
+       * MUST include patient's insurance information if provided (e.g., "Insurance: Blue Cross Blue Shield")
+       * MUST include practitioner information if provided (e.g., "Practitioner: Dr. Smith" and address)
+       * MUST include preferred pharmacy if provided (e.g., "Practitioner Address: 123 Main St")
+       * Uses a professional yet warm tone
+       * Only includes information that has actual values (skip fields marked as "Not specified")
 
 OUTPUT FORMAT (raw JSON only):
 {
@@ -133,16 +140,15 @@ OUTPUT FORMAT (raw JSON only):
     },
     {
       "type": "scheduling",
-      "description": "Schedule a meeting to review surgical options",
-      "reason": "Patient requested detailed discussion about surgical risks and benefits",
-      "when": "Next Tuesday afternoon",
-      "subject": "Follow-up: Surgical Options Discussion",
-      "body": "Hi [Patient Name],\n\nIt was good to speak with you today. As discussed, we should schedule a time next Tuesday afternoon to go over the surgical options in more detail. Please let us know what time works best for you.\n\nBest regards,\nDr. Smith",
+      "description": "Send follow-up email regarding care plan",
+      "reason": "Patient needs follow-up instructions and care plan details",
+      "when": "Within 24 hours",
+      "subject": "Your Care Plan and Next Steps",
+      "body": "Dear [Patient Name],\n\nThank you for coming in today. Based on our consultation, here's a summary of your care plan:\n\n[Summary of key points from consultation]\n\nNext Steps:\n1. [Follow-up instruction 1]\n2. [Follow-up instruction 2]\n\nYour Information:\nInsurance: [Patient Insurance from Medplum]\nPreferred Pharmacy: [Patient Pharmacy from Medplum]\nPractitioner: [Practitioner Name]\nPractitioner Address: [Practitioner Address]\n\nIf you have any questions, please don't hesitate to contact us.\n\nBest regards,\nYour Care Team",
       "resource": {
         "resourceType": "Appointment",
         "status": "proposed",
-        "description": "Meeting to review surgical options",
-        "start": "2023-11-28T14:00:00Z" 
+        "description": "Follow-up communication regarding care plan"
       }
     }
   ]
@@ -388,6 +394,7 @@ For a group linkId "exam-details" containing "examType" and "bodyRegion", format
 - Preferred Pharmacy: ${patient.preferredPharmacy || 'Unknown'}
 - Insurance: ${patient.insurance || 'Unknown'}
 - Primary Care Provider: ${patient.generalPractitioner || 'Unknown'}
+- Organization Address: ${patient.organizationAddress || 'Unknown'}
 
 **CRITICAL INSTRUCTIONS FOR USING PATIENT DATA:**
 1. For ANY patient demographic field (name, DOB, phone, email, address, MRN, etc.), USE THE EXACT VALUES ABOVE
@@ -400,7 +407,9 @@ For a group linkId "exam-details" containing "examType" and "bodyRegion", format
    - Clinical indicators: Be specific and realistic (e.g., "Evaluate for pneumonia - persistent cough and fever x3 days")
    - Priorities: Use "Routine", "Urgent", or "STAT" based on clinical context
    - Boolean fields: Use true/false appropriately (e.g., pregnancy: false for males, contrast: false unless specified)
-4. NEVER leave fields empty or use placeholders like "N/A", "Unknown", "[value]" - always provide realistic values`;
+4. When generating scheduling email bodies, INCLUDE the insurance, pharmacy, and practitioner information if provided above
+5. Do NOT use "Unknown" or "Not specified" in email bodies - only include fields that have actual values
+6. NEVER leave fields empty or use placeholders like "N/A", "[value]" - always provide realistic values`;
     } else if (patientContext) {
       userMessage += `\n\nPatient Context:\n${patientContext}`;
     }
@@ -471,13 +480,36 @@ For a group linkId "exam-details" containing "examType" and "bodyRegion", format
 
     // Validate each action and fill missing fields with smart dummy data
     const validatedActions = [];
-    
+
     for (const action of parsedResponse.actions) {
       // Basic validation
-      if (!action.type || !action.description || !action.resource) {
+      if (!action.type || !action.description) {
         console.warn('[Analyze] Skipping invalid action:', action);
         continue;
       }
+
+      // Validate resource is present (except for scheduling which only needs email fields)
+      if (action.type !== 'scheduling' && !action.resource) {
+        console.warn('[Analyze] Skipping action missing resource:', action);
+        continue;
+      }
+
+      // For scheduling, ensure we have the required email fields
+      if (action.type === 'scheduling') {
+        if (!action.subject && !action.body) {
+          console.warn('[Analyze] Skipping scheduling action missing email fields:', action);
+          continue;
+        }
+        // Add a default Appointment resource if not provided
+        if (!action.resource) {
+          action.resource = {
+            resourceType: 'Appointment',
+            status: 'proposed',
+            description: action.description
+          };
+        }
+      }
+
       if (!['medication', 'lab', 'imaging', 'referral', 'followup', 'questionnaire_response', 'scheduling'].includes(action.type)) {
         console.warn('[Analyze] Skipping action with invalid type:', action.type);
         continue;
@@ -540,7 +572,23 @@ For a group linkId "exam-details" containing "examType" and "bodyRegion", format
       validatedActions.push(action);
     }
 
-    console.log(`[Analyze] Successfully processed ${validatedActions.length} actions`);
+    // Log action types for debugging
+    const actionSummary = validatedActions.reduce((acc: any, action: any) => {
+      acc[action.type] = (acc[action.type] || 0) + 1;
+      return acc;
+    }, {});
+    console.log(`[Analyze] Successfully processed ${validatedActions.length} actions:`, actionSummary);
+
+    // Log scheduling actions specifically
+    const schedulingActions = validatedActions.filter((a: any) => a.type === 'scheduling');
+    if (schedulingActions.length > 0) {
+      console.log(`[Analyze] Scheduling actions:`, schedulingActions.map((a: any) => ({
+        description: a.description,
+        hasSubject: !!a.subject,
+        hasBody: !!a.body,
+        hasResource: !!a.resource
+      })));
+    }
 
     return NextResponse.json({
       actions: validatedActions,
