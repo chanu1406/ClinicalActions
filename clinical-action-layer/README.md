@@ -49,9 +49,10 @@ clinical-action-layer/
 │   ├── page.tsx              # Main UI component
 │   ├── layout.tsx            # Root layout
 │   └── api/
-│       ├── ingest/           # Fetch Heidi transcripts
-│       ├── analyze/          # Claude AI extraction
-│       └── execute/          # Write to Medplum
+│       ├── heidi/            # Fetch Heidi transcripts
+│       ├── analyze/          # Claude AI extraction (✅ Complete)
+│       ├── medplum/          # Medplum patient queries (✅ Complete)
+│       └── execute/          # Write FHIR resources to Medplum (✅ Complete)
 ├── components/
 │   ├── ActionCard.tsx        # Individual action card UI
 │   └── ui/                   # shadcn/ui components
@@ -63,10 +64,19 @@ clinical-action-layer/
 
 ## 🔄 Workflow
 
-1. **Ingest**: Fetch consultation transcript from Heidi API
-2. **Analyze**: Claude extracts clinical intents (prescriptions, labs, imaging, etc.)
-3. **Review**: Doctor reviews pre-filled action cards in the UI
-4. **Execute**: Approved actions are written as FHIR resources to Medplum
+1. **Ingest**: Fetch consultation transcript from Heidi API ✅
+2. **Analyze**: Claude extracts clinical intents (medications, labs, imaging, referrals, follow-ups) ✅
+3. **Review**: Doctor reviews pre-filled action cards in the UI (Frontend: In Progress)
+4. **Execute**: Approved actions are written as FHIR resources to Medplum ✅
+
+### Backend API Status
+All core backend APIs are **100% complete** and production-ready:
+- ✅ `POST /api/analyze` - Claude AI clinical action extraction
+- ✅ `GET /api/heidi/transcript/{id}` - Fetch consultation transcripts
+- ✅ `GET /api/medplum/patients` - Patient list retrieval
+- ✅ `POST /api/execute` - Create FHIR resources (MedicationRequest, ServiceRequest)
+
+See `EXECUTE_API.md` and `EXECUTE_IMPLEMENTATION_COMPLETE.md` for complete documentation.
 
 ## 🛠️ Available Scripts
 
