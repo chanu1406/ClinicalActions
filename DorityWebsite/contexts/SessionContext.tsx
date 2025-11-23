@@ -154,12 +154,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }));
 
     try {
-      const response = await fetch("/api/session/analyze", {
+      // Call real Claude API endpoint
+      const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sessionId: state.sessionId,
           transcript: state.transcript,
+          patientContext: state.patient ? `Patient: ${state.patient.name}` : undefined,
         }),
       });
 
@@ -169,9 +170,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       const data = await response.json();
 
+      // Transform backend actions to frontend format
+      const transformedActions: SuggestedAction[] = data.actions.map((action: any, index: number) => ({
+        id: `action-${Date.now()}-${index}`,
+        type: action.type,
+        status: "pending" as const,
+        title: action.description,
+        categoryLabel: action.type.charAt(0).toUpperCase() + action.type.slice(1),
+        details: action.description,
+        rationale: `Extracted from transcript by AI`,
+        fhirPreview: action.resource,
+      }));
+
       setState((prev) => ({
         ...prev,
-        suggestedActions: data.suggestedActions || [],
+        suggestedActions: transformedActions,
         currentStep: 3,
         isLoading: { ...prev.isLoading, analyze: false },
       }));
@@ -182,7 +195,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         isLoading: { ...prev.isLoading, analyze: false },
       }));
     }
-  }, [state.sessionId, state.transcript]);
+  }, [state.sessionId, state.transcript, state.patient]);
 
   const updateActionStatus = useCallback(
     (actionId: string, status: "pending" | "approved" | "rejected") => {
@@ -214,6 +227,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    if (!state.patient?.id) {
+      setState((prev) => ({ ...prev, error: "No patient selected" }));
+      return;
+    }
+
     setState((prev) => ({
       ...prev,
       isLoading: { ...prev.isLoading, apply: true },
@@ -221,24 +239,43 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }));
 
     try {
-      const response = await fetch("/api/session/apply-actions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: state.sessionId,
-          actions: state.approvedActions,
-        }),
-      });
+      // Execute each approved action to Medplum
+      const results = [];
+      const errors = [];
 
-      if (!response.ok) {
-        throw new Error(`Failed to apply actions: ${response.statusText}`);
+      for (const action of state.approvedActions) {
+        try {
+          const response = await fetch("/api/execute", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: {
+                type: action.type,
+                description: action.title,
+                resource: action.fhirPreview,
+              },
+              patientId: state.patient.id,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Failed to execute ${action.type}`);
+          }
+
+          const result = await response.json();
+          results.push({ action, result });
+        } catch (err) {
+          errors.push({ action, error: err instanceof Error ? err.message : 'Unknown error' });
+        }
       }
 
-      const data = await response.json();
+      if (errors.length > 0) {
+        throw new Error(`Failed to apply ${errors.length} action(s): ${errors.map(e => e.error).join(', ')}`);
+      }
 
       setState((prev) => ({
         ...prev,
-        approvedActions: data.appliedActions || prev.approvedActions,
         currentStep: 4,
         isLoading: { ...prev.isLoading, apply: false },
       }));
@@ -249,7 +286,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         isLoading: { ...prev.isLoading, apply: false },
       }));
     }
-  }, [state.sessionId, state.approvedActions]);
+  }, [state.sessionId, state.approvedActions, state.patient]);
 
   const generateAftercare = useCallback(async () => {
     if (!state.sessionId) {

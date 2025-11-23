@@ -4,50 +4,48 @@ import { useState, useEffect } from "react";
 import { Search, Loader2 } from "lucide-react";
 import { useSession } from "@/contexts/SessionContext";
 
-// Mock patient data for search - TODO: Replace with Medplum Patient search
-const MOCK_PATIENTS = [
-  {
-    id: "patient-001",
-    name: "John Smith",
-    mrn: "MRN-10234",
-    dob: "1965-03-15",
-    keyInfo: "T2DM, HTN",
-    email: "john.smith@email.com",
-  },
-  {
-    id: "patient-002",
-    name: "Sarah Johnson",
-    mrn: "MRN-10567",
-    dob: "1978-07-22",
-    keyInfo: "Asthma, GERD",
-    email: "sarah.j@email.com",
-  },
-  {
-    id: "patient-003",
-    name: "Michael Chen",
-    mrn: "MRN-10891",
-    dob: "1952-11-08",
-    keyInfo: "CHF, CKD Stage 3",
-    email: "m.chen@email.com",
-  },
-  {
-    id: "patient-004",
-    name: "Emily Rodriguez",
-    mrn: "MRN-11024",
-    dob: "1990-02-14",
-    keyInfo: "Hypothyroidism, migraines",
-    email: "emily.r90@email.com",
-  },
-];
+// Real Medplum patient interface
+interface MedplumPatient {
+  patientId: string;
+  patientFirstName: string | undefined;
+  patientLastName: string | undefined;
+}
 
 export default function PatientSearchPanel() {
   const { patient, startSession, isLoading, error, clearError } = useSession();
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<typeof MOCK_PATIENTS>([]);
+  const [allPatients, setAllPatients] = useState<MedplumPatient[]>([]);
+  const [searchResults, setSearchResults] = useState<MedplumPatient[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Debounced search
+  // Fetch all patients on component mount
+  useEffect(() => {
+    async function fetchPatients() {
+      try {
+        setIsSearching(true);
+        const response = await fetch('/api/medplum/patients');
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch patients from Medplum');
+        }
+
+        const data = await response.json();
+        setAllPatients(data);
+        setFetchError(null);
+      } catch (err) {
+        console.error('Error fetching patients:', err);
+        setFetchError(err instanceof Error ? err.message : 'Failed to load patients');
+      } finally {
+        setIsSearching(false);
+      }
+    }
+
+    fetchPatients();
+  }, []);
+
+  // Debounced search through fetched patients
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
@@ -58,12 +56,17 @@ export default function PatientSearchPanel() {
     setIsSearching(true);
     const timer = setTimeout(() => {
       const query = searchQuery.toLowerCase();
-      const results = MOCK_PATIENTS.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query) ||
-          p.mrn.toLowerCase().includes(query) ||
-          p.id.toLowerCase().includes(query)
-      );
+      const results = allPatients.filter((p) => {
+        const firstName = p.patientFirstName?.toLowerCase() || '';
+        const lastName = p.patientLastName?.toLowerCase() || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+        const patientId = p.patientId.toLowerCase();
+        
+        return fullName.includes(query) || 
+               firstName.includes(query) || 
+               lastName.includes(query) ||
+               patientId.includes(query);
+      });
 
       setSearchResults(results);
       setIsSearching(false);
@@ -71,7 +74,7 @@ export default function PatientSearchPanel() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, allPatients]);
 
   const handleSelectPatient = async (patientId: string) => {
     clearError();
@@ -103,15 +106,22 @@ export default function PatientSearchPanel() {
         </div>
       </div>
 
+      {/* Fetch Error */}
+      {fetchError && (
+        <div className="mb-4 bg-red-50 border border-red-200/50 rounded-xl p-3 text-sm text-red-900">
+          {fetchError}
+        </div>
+      )}
+
       {/* Results */}
       <div className="flex-1 overflow-y-auto">
-        {!hasSearched && (
+        {!hasSearched && !isSearching && allPatients.length > 0 && (
           <div className="flex items-center justify-center h-full text-center">
             <div>
               <Search className="w-12 h-12 mx-auto mb-3 text-zinc-300" />
               <p className="text-sm font-medium text-zinc-500">Start typing to search</p>
               <p className="text-xs text-zinc-400 mt-1">
-                Search by name, MRN, or patient ID
+                {allPatients.length} patients loaded from Medplum
               </p>
             </div>
           </div>
@@ -132,11 +142,12 @@ export default function PatientSearchPanel() {
         {searchResults.length > 0 && (
           <div className="space-y-2">
             {searchResults.map((p) => {
-              const isSelected = patient?.id === p.id;
+              const fullName = `${p.patientFirstName || ''} ${p.patientLastName || ''}`.trim() || 'Unknown Patient';
+              const isSelected = patient?.id === p.patientId;
               return (
                 <button
-                  key={p.id}
-                  onClick={() => handleSelectPatient(p.id)}
+                  key={p.patientId}
+                  onClick={() => handleSelectPatient(p.patientId)}
                   disabled={isLoading.startSession}
                   className={`w-full text-left p-3.5 rounded-xl border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                     isSelected
@@ -146,22 +157,15 @@ export default function PatientSearchPanel() {
                 >
                   <div className="flex items-start justify-between mb-1.5">
                     <h3 className="font-semibold text-sm text-zinc-900">
-                      {p.name}
+                      {fullName}
                     </h3>
                     {isSelected && (
                       <div className="w-2 h-2 rounded-full bg-[#7C2D3E] flex-shrink-0 mt-1.5" />
                     )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-zinc-600">
-                    <span className="font-mono">{p.mrn}</span>
-                    <span>•</span>
-                    <span>DOB: {p.dob}</span>
+                    <span className="font-mono text-xs">ID: {p.patientId.substring(0, 8)}...</span>
                   </div>
-                  {p.keyInfo && (
-                    <p className="text-xs text-zinc-500 mt-1.5 truncate">
-                      {p.keyInfo}
-                    </p>
-                  )}
                 </button>
               );
             })}
