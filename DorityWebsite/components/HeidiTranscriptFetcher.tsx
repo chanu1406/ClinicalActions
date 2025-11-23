@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Download, Loader2, AlertCircle, Check, ExternalLink } from "lucide-react";
+import { useSession } from "@/contexts/SessionContext";
 
 interface HeidiSession {
   id: string;
@@ -14,6 +15,7 @@ interface HeidiTranscriptFetcherProps {
 }
 
 export default function HeidiTranscriptFetcher({ onTranscriptFetched, disabled }: HeidiTranscriptFetcherProps) {
+  const { patient } = useSession();
   const [sessions, setSessions] = useState<HeidiSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
@@ -35,9 +37,16 @@ export default function HeidiTranscriptFetcher({ onTranscriptFetched, disabled }
       const data = await response.json();
       
       if (data.success && data.sessions) {
-        setSessions(data.sessions);
-        if (data.sessions.length > 0) {
-          setSelectedSessionId(data.sessions[0].id);
+        let availableSessions = data.sessions;
+
+        // Filter by patient's assigned session if available
+        if (patient?.heidiSessionId) {
+          availableSessions = data.sessions.filter((s: HeidiSession) => s.id === patient.heidiSessionId);
+        }
+
+        setSessions(availableSessions);
+        if (availableSessions.length > 0) {
+          setSelectedSessionId(availableSessions[0].id);
         }
       } else {
         throw new Error(data.error || 'No sessions available');
@@ -97,12 +106,12 @@ export default function HeidiTranscriptFetcher({ onTranscriptFetched, disabled }
     }
   };
 
-  // Auto-load sessions on mount
-  useState(() => {
+  // Auto-load sessions on mount or when patient changes
+  useEffect(() => {
     if (!disabled) {
       loadSessions();
     }
-  });
+  }, [disabled, patient?.heidiSessionId]);
 
   return (
     <div className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200/50 rounded-xl p-4 space-y-3">
