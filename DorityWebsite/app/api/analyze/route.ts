@@ -9,6 +9,19 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+export const getBaseUrl = () => {
+  if (typeof window !== "undefined") {
+    // browser
+    return window.location.origin;
+  }
+
+  // server
+  return process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "http://localhost:3000";
+};
+
+
 interface AnalyzeRequest {
   transcript: string;
   patientContext?: string;
@@ -297,7 +310,7 @@ export async function POST(request: NextRequest) {
     // Fetch available questionnaires from Medplum first
     let availableQuestionnaires: any[] = [];
     try {
-      const questionnairesResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/questionnaires`);
+      const questionnairesResponse = await fetch(`${getBaseUrl()}/api/questionnaires`);
       if (questionnairesResponse.ok) {
         const data = await questionnairesResponse.json();
         availableQuestionnaires = data.questionnaires || [];
@@ -307,7 +320,7 @@ export async function POST(request: NextRequest) {
         const questionnaireDetails = await Promise.all(
           availableQuestionnaires.map(async (q) => {
             try {
-              const detailResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/questionnaire/${q.id}`);
+              const detailResponse = await fetch(`${getBaseUrl()}/api/questionnaire/${q.id}`);
               if (detailResponse.ok) {
                 const detail = await detailResponse.json();
                 return {
