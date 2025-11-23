@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMedplumClient } from "@/lib/medplum-client";
-import { Patient, Address } from "@medplum/fhirtypes";
+import { Patient, Address, Coverage } from "@medplum/fhirtypes";
 import { extractPatientData } from "@/lib/patient-utils";
 
 const formatAddress = (address?: Address) => {
@@ -103,28 +103,80 @@ export async function POST(request: NextRequest) {
     const generalPractitioner = patientSelection?.generalPractitioner || patient.generalPractitioner?.[0]?.display || "Not specified";
     const organizationAddress = patientSelection?.organizationAddress || "";
 
-    // Extract insurance from patient extensions or meta
+    // Fetch insurance from Coverage resource or generalPractitioner Organization
     let insurance = "Not specified";
-    // Check for insurance in extensions
-    if (patient.extension) {
-      const insuranceExt = patient.extension.find(ext =>
-        ext.url?.includes('insurance') || ext.url?.includes('coverage')
-      );
-      if (insuranceExt && insuranceExt.valueString) {
-        insurance = insuranceExt.valueString;
+
+    // First, check if generalPractitioner references an insurance company
+    // (Some Medplum instances store insurance as an Organization in generalPractitioner)
+    if (patient.generalPractitioner && patient.generalPractitioner.length > 0) {
+      try {
+        for (const gpRef of patient.generalPractitioner) {
+          if (gpRef.reference) {
+            const orgId = gpRef.reference.replace('Organization/', '');
+            const org = await medplum.readResource('Organization', orgId);
+
+            console.log('[Session Start] Checking generalPractitioner org:', {
+              id: org.id,
+              name: org.name,
+              type: org.type?.[0]?.coding?.[0]?.display || org.type?.[0]?.text
+            });
+
+            // Check if this organization is an insurance company
+            const isInsurance = org.type?.some(t =>
+              t.text?.toLowerCase().includes('insurance') ||
+              t.coding?.some(c => c.display?.toLowerCase().includes('insurance'))
+            );
+
+            if (isInsurance && org.name) {
+              insurance = org.name;
+              console.log('[Session Start] Found insurance in generalPractitioner:', insurance);
+              break;
+            }
+          }
+        }
+      } catch (gpError) {
+        console.error('[Session Start] Error checking generalPractitioner for insurance:', gpError);
       }
     }
-    // Check for insurance in patient.meta.tag (some systems store it here)
-    if (insurance === "Not specified" && patient.meta?.tag) {
-      const insuranceTag = patient.meta.tag.find(tag =>
-        tag.display?.toLowerCase().includes('insurance') ||
-        tag.display?.toLowerCase().includes('coverage')
-      );
-      if (insuranceTag?.display) {
-        insurance = insuranceTag.display;
+
+    // If not found in generalPractitioner, try Coverage resource
+    if (insurance === "Not specified") {
+      try {
+        console.log('[Session Start] Fetching Coverage resources for patient:', patientId);
+
+        const allCoverages = await medplum.searchResources('Coverage', {
+          patient: `Patient/${patientId}`
+        });
+
+        console.log('[Session Start] Found coverages:', allCoverages.length);
+
+        if (allCoverages.length > 0) {
+          const coverage = allCoverages[0];
+          console.log('[Session Start] Using coverage:', {
+            id: coverage.id,
+            status: coverage.status,
+            hasPayor: !!coverage.payor,
+            payorDisplay: coverage.payor?.[0]?.display
+          });
+
+          // Try to get insurance name from various fields
+          if (coverage.payor && coverage.payor.length > 0) {
+            insurance = coverage.payor[0].display || "Insurance on file";
+          } else if (coverage.type?.text) {
+            insurance = coverage.type.text;
+          } else if (coverage.type?.coding?.[0]?.display) {
+            insurance = coverage.type.coding[0].display;
+          } else {
+            insurance = "Insurance on file";
+          }
+
+          console.log('[Session Start] Extracted insurance from Coverage:', insurance);
+        }
+      } catch (coverageError) {
+        console.error('[Session Start] Error fetching coverage:', coverageError);
       }
     }
-    
+
     console.log('[Session Start] Extracted patient data:', {
       id: patientData.id,
       name: patientData.fullName,
@@ -132,9 +184,7 @@ export async function POST(request: NextRequest) {
       hasEmail: !!patientData.email,
       hasAddress: !!patientData.address,
       emergencyContacts: patientData.emergencyContacts.length,
-      insurance: insurance,
-      hasInsuranceExtension: !!patient.extension?.find(ext => ext.url?.includes('insurance')),
-      hasInsuranceTag: !!patient.meta?.tag?.find(tag => tag.display?.toLowerCase().includes('insurance'))
+      insurance: insurance
     });
 
     // Build patient summary for session context
