@@ -302,10 +302,7 @@ export function generateSmartDummyValue(
     case 'string':
     case 'text':
     default:
-      // Check if it's a required field to give it more attention
-      if (item.required) {
-        return 'To be completed';
-      }
+      // Return empty string for unfilled fields - they'll be visually highlighted if required
       return '';
   }
 }

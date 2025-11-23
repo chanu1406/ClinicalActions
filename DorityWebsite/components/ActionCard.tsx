@@ -9,11 +9,58 @@ interface ActionCardProps {
   action: SuggestedAction;
 }
 
-// Calculate completion percentage based on available fields
+// Calculate completion percentage based on questionnaire fields
 function calculateCompletionPercentage(action: SuggestedAction): number {
   // If scheduling, always 100% if essential fields exist
   if (action.type === 'scheduling') return 100;
 
+  // If action has a QuestionnaireResponse, calculate based on filled items
+  if (action.fhirPreview?.resourceType === 'QuestionnaireResponse' && action.fhirPreview?.item && Array.isArray(action.fhirPreview.item)) {
+    const items = action.fhirPreview.item;
+    
+    // Recursively count all items (including nested ones)
+    const countItems = (itemList: any[]): { total: number; filled: number } => {
+      let total = 0;
+      let filled = 0;
+      
+      for (const item of itemList) {
+        // If it has nested items (group), recurse
+        if (item.item && Array.isArray(item.item)) {
+          const nested = countItems(item.item);
+          total += nested.total;
+          filled += nested.filled;
+        } else {
+          // It's a question field - count it
+          total += 1;
+          
+          // Check if it has a meaningful answer
+          if (item.answer && item.answer.length > 0) {
+            const answer = item.answer[0];
+            const hasValue = 
+              (answer.valueString && answer.valueString.trim() !== '' && answer.valueString !== 'N/A' && answer.valueString !== 'Unknown') ||
+              (answer.valueBoolean !== undefined) ||
+              (answer.valueInteger !== undefined) ||
+              (answer.valueDecimal !== undefined) ||
+              (answer.valueDate && answer.valueDate !== '') ||
+              (answer.valueDateTime && answer.valueDateTime !== '') ||
+              (answer.valueCoding && answer.valueCoding.code);
+            
+            if (hasValue) {
+              filled += 1;
+            }
+          }
+        }
+      }
+      
+      return { total, filled };
+    };
+    
+    const counts = countItems(items);
+    if (counts.total === 0) return 50; // Default if no items found
+    return Math.round((counts.filled / counts.total) * 100);
+  }
+
+  // Fallback to basic field checking for non-questionnaire actions
   const fields = [
     action.title,
     action.details,
@@ -660,8 +707,57 @@ export default function ActionCard({ action }: ActionCardProps) {
                     fhirResource={action.fhirPreview}
                     patientData={patient}
                     onResponseChange={(responses) => {
-                      console.log('Questionnaire responses:', responses);
-                      // TODO: Save responses to action
+                      console.log('Questionnaire responses changed:', responses);
+                      
+                      // Helper to update items recursively
+                      const updateItems = (items: any[]): any[] => {
+                        return items.map(item => {
+                          if (item.item && Array.isArray(item.item)) {
+                            // It's a group - recurse into nested items
+                            return {
+                              ...item,
+                              item: updateItems(item.item)
+                            };
+                          } else {
+                            // It's a question - update the answer if we have a response
+                            const linkId = item.linkId;
+                            if (responses.hasOwnProperty(linkId)) {
+                              const value = responses[linkId];
+                              let answer;
+                              
+                              if (typeof value === 'boolean') {
+                                answer = [{ valueBoolean: value }];
+                              } else if (typeof value === 'number') {
+                                answer = [{ valueInteger: value }];
+                              } else if (value && typeof value === 'object' && value.code) {
+                                answer = [{ valueCoding: value }];
+                              } else {
+                                answer = [{ valueString: value }];
+                              }
+                              
+                              return {
+                                ...item,
+                                answer
+                              };
+                            }
+                            return item;
+                          }
+                        });
+                      };
+                      
+                      // Update the fhirPreview with modified items
+                      const updatedFhirPreview = {
+                        ...action.fhirPreview,
+                        item: Array.isArray(action.fhirPreview?.item) ? updateItems(action.fhirPreview.item) : []
+                      };
+                      
+                      // Update the action in the session context
+                      updateAction(action.id, {
+                        fhirPreview: updatedFhirPreview
+                      });
+                      
+                      // Also update local form data
+                      setFormData(updatedFhirPreview);
                     }}
                   />
                 ) : (

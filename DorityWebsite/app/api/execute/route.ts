@@ -72,16 +72,94 @@ export async function POST(request: NextRequest) {
 
     // Validate resource type
     const resourceType = action.resource.resourceType;
-    if (resourceType !== 'MedicationRequest' && resourceType !== 'ServiceRequest' && resourceType !== 'Appointment') {
+    
+    // Handle QuestionnaireResponse - convert to ServiceRequest based on action type
+    if (resourceType === 'QuestionnaireResponse') {
+      console.log('[Execute] Converting QuestionnaireResponse to ServiceRequest/MedicationRequest');
+      
+      // Extract data from questionnaire response
+      const extractValue = (linkId: string): any => {
+        const findInItems = (items: any[]): any => {
+          for (const item of items) {
+            if (item.linkId === linkId && item.answer && item.answer.length > 0) {
+              const answer = item.answer[0];
+              return answer.valueString || answer.valueBoolean || answer.valueInteger || 
+                     answer.valueDecimal || answer.valueDate || answer.valueCoding?.display;
+            }
+            if (item.item && Array.isArray(item.item)) {
+              const found = findInItems(item.item);
+              if (found !== undefined) return found;
+            }
+          }
+          return undefined;
+        };
+        return findInItems(action.resource.item || []);
+      };
+      
+      // Convert to ServiceRequest for imaging/lab/referral actions
+      if (action.type === 'imaging' || action.type === 'lab' || action.type === 'referral') {
+        action.resource = {
+          resourceType: 'ServiceRequest',
+          status: 'draft',
+          intent: 'order',
+          category: [{
+            text: action.type === 'imaging' ? 'Radiology' : 
+                  action.type === 'lab' ? 'Laboratory' : 'Referral'
+          }],
+          code: {
+            text: extractValue('examType') || extractValue('testType') || extractValue('scanType') || action.description
+          },
+          bodySite: extractValue('bodyRegion') ? [{
+            text: extractValue('bodyRegion')
+          }] : undefined,
+          priority: (extractValue('priority') || 'routine').toLowerCase(),
+          reasonCode: extractValue('clinicalIndication') ? [{
+            text: extractValue('clinicalIndication')
+          }] : undefined,
+          note: extractValue('notes') || extractValue('additionalInfo') ? [{
+            text: extractValue('notes') || extractValue('additionalInfo')
+          }] : undefined,
+          subject: {
+            reference: `Patient/${patientId}`
+          }
+        } as ServiceRequest;
+      }
+      // Convert to MedicationRequest for medication actions
+      else if (action.type === 'medication') {
+        action.resource = {
+          resourceType: 'MedicationRequest',
+          status: 'draft',
+          intent: 'order',
+          medicationCodeableConcept: {
+            text: extractValue('medication') || action.description
+          },
+          subject: {
+            reference: `Patient/${patientId}`
+          },
+          dosageInstruction: [{
+            text: `${extractValue('dose') || ''} ${extractValue('route') || 'oral'} ${extractValue('frequency') || ''}`.trim()
+          }],
+          dispenseRequest: extractValue('quantity') ? {
+            quantity: {
+              value: parseInt(extractValue('quantity')) || 30
+            }
+          } : undefined
+        } as MedicationRequest;
+      }
+    }
+    
+    // Re-validate after potential conversion
+    const finalResourceType = action.resource.resourceType;
+    if (finalResourceType !== 'MedicationRequest' && finalResourceType !== 'ServiceRequest' && finalResourceType !== 'Appointment') {
       return NextResponse.json(
         { 
-          error: `Invalid resource type: ${resourceType}. Expected MedicationRequest, ServiceRequest, or Appointment` 
+          error: `Invalid resource type: ${finalResourceType}. Expected MedicationRequest, ServiceRequest, or Appointment, Failed to create resource in Medplum` 
         },
         { status: 400 }
       );
     }
 
-    console.log(`[Execute] Processing ${resourceType} for patient ${patientId}`);
+    console.log(`[Execute] Processing ${finalResourceType} for patient ${patientId}`);
     console.log(`[Execute] Action type: ${action.type}, Description: ${action.description}`);
 
     // Handle Email Sending for Scheduling Actions
@@ -141,7 +219,7 @@ export async function POST(request: NextRequest) {
     const resourceToCreate: any = { ...action.resource };
 
     // Attach patient reference to the resource
-    if (resourceType === 'Appointment') {
+    if (finalResourceType === 'Appointment') {
         // For Appointment, the patient is a participant
         resourceToCreate.participant = [
             {
