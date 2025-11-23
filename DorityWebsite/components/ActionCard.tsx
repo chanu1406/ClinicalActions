@@ -1,10 +1,25 @@
 "use client";
 
-import { Pill, Stethoscope, Image, FlaskConical, UserPlus, Calendar, FileText, AlertTriangle, CheckCircle2, Check, X } from "lucide-react";
+import { useState } from "react";
+import { Pill, Stethoscope, Image, FlaskConical, UserPlus, Calendar, FileText, AlertTriangle, CheckCircle2, Check, X, FileEdit } from "lucide-react";
 import { useSession, type SuggestedAction } from "@/contexts/SessionContext";
 
 interface ActionCardProps {
   action: SuggestedAction;
+}
+
+// Calculate completion percentage based on available fields
+function calculateCompletionPercentage(action: SuggestedAction): number {
+  const fields = [
+    action.title,
+    action.details,
+    action.rationale,
+    action.doseInfo,
+    action.pharmacy,
+    action.safetyFlag,
+  ];
+  const filledFields = fields.filter(f => f && f !== "").length;
+  return Math.round((filledFields / fields.length) * 100);
 }
 
 const TYPE_ICONS = {
@@ -33,6 +48,7 @@ const SAFETY_COLORS = {
 
 export default function ActionCard({ action }: ActionCardProps) {
   const { updateActionStatus } = useSession();
+  const [showForm, setShowForm] = useState(false);
 
   const handleApprove = () => {
     updateActionStatus(action.id, "approved");
@@ -45,6 +61,7 @@ export default function ActionCard({ action }: ActionCardProps) {
   const Icon = TYPE_ICONS[action.type] || FileText;
   const isApproved = action.status === "approved";
   const isRejected = action.status === "rejected";
+  const completionPercentage = calculateCompletionPercentage(action);
 
   if (isRejected) {
     return (
@@ -103,11 +120,29 @@ export default function ActionCard({ action }: ActionCardProps) {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-zinc-600">
-                {action.details}
-              </p>
+              <div className="flex items-center gap-3 mb-1">
+                <p className="text-xs text-zinc-600">
+                  {action.details}
+                </p>
+              </div>
+              {/* Completion Progress Bar */}
+              <div className="flex items-center gap-2 mt-2">
+                <div className="flex-1 bg-zinc-100 rounded-full h-1.5 overflow-hidden">
+                  <div 
+                    className={`h-full transition-all duration-300 ${
+                      completionPercentage === 100 ? 'bg-emerald-500' : 
+                      completionPercentage >= 75 ? 'bg-blue-500' : 
+                      completionPercentage >= 50 ? 'bg-amber-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${completionPercentage}%` }}
+                  />
+                </div>
+                <span className="text-xs font-medium text-zinc-600 tabular-nums">
+                  {completionPercentage}%
+                </span>
+              </div>
               {action.doseInfo && (
-                <p className="text-xs text-zinc-500 mt-1">
+                <p className="text-xs text-zinc-500 mt-2">
                   <span className="font-semibold">Dose:</span> {action.doseInfo}
                 </p>
               )}
@@ -136,6 +171,13 @@ export default function ActionCard({ action }: ActionCardProps) {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 mt-4">
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="px-3 py-1.5 text-xs font-medium text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100/80 rounded-lg transition-all border border-zinc-200/70 flex items-center gap-1.5"
+            >
+              <FileEdit className="w-3.5 h-3.5" />
+              {showForm ? "Hide" : "View/Modify"} Form
+            </button>
             {!isApproved && (
               <>
                 <button
@@ -154,6 +196,49 @@ export default function ActionCard({ action }: ActionCardProps) {
               </>
             )}
           </div>
+
+          {/* Form Details (Expandable) */}
+          {showForm && (
+            <div className="mt-4 p-4 bg-zinc-50/50 border border-zinc-200/70 rounded-xl space-y-3">
+              <h4 className="text-xs font-semibold text-zinc-900 mb-3">FHIR Resource Preview</h4>
+              <div className="space-y-2 text-xs">
+                <div className="flex items-start gap-2">
+                  <span className="font-semibold text-zinc-700 min-w-[100px]">Resource Type:</span>
+                  <span className="text-zinc-600">{action.fhirPreview.resourceType}</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="font-semibold text-zinc-700 min-w-[100px]">Status:</span>
+                  <span className="text-zinc-600">{action.fhirPreview.status}</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="font-semibold text-zinc-700 min-w-[100px]">Title:</span>
+                  <span className="text-zinc-600">{action.title}</span>
+                </div>
+                {action.doseInfo && (
+                  <div className="flex items-start gap-2">
+                    <span className="font-semibold text-zinc-700 min-w-[100px]">Dosage:</span>
+                    <span className="text-zinc-600">{action.doseInfo}</span>
+                  </div>
+                )}
+                {action.pharmacy && (
+                  <div className="flex items-start gap-2">
+                    <span className="font-semibold text-zinc-700 min-w-[100px]">Pharmacy:</span>
+                    <span className="text-zinc-600">{action.pharmacy}</span>
+                  </div>
+                )}
+                <div className="flex items-start gap-2">
+                  <span className="font-semibold text-zinc-700 min-w-[100px]">Rationale:</span>
+                  <span className="text-zinc-600 italic">"{action.rationale}"</span>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-zinc-200/70">
+                <button className="text-xs text-[#7C2D3E] hover:text-[#5A1F2D] font-medium flex items-center gap-1.5">
+                  <FileEdit className="w-3.5 h-3.5" />
+                  Edit Form Details
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
