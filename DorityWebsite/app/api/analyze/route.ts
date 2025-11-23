@@ -32,8 +32,9 @@ CRITICAL RULES:
 3. For each action, generate a Draft FHIR Resource:
    - MedicationRequest for medications/prescriptions
    - ServiceRequest for labs, imaging, referrals
+   - QuestionnaireResponse for mental health screenings (PHQ-4)
 4. Include a human-readable "description" for UI display
-5. Categorize each action with a "type": "medication", "lab", "imaging", "referral", or "followup"
+Categorize each action with a "type": "medication", "lab", "imaging", "referral", "followup", or "questionnaire_response"
 
 OUTPUT FORMAT (raw JSON only):
 {
@@ -106,6 +107,39 @@ IMPORTANT FHIR GUIDELINES:
 - Set status to "draft" (not "active") since these need doctor approval
 - Include display text for all codes for human readability
 - If you cannot determine specific codes, use text-only descriptions
+
+MENTAL HEALTH SCREENING LOGIC (PHQ-4):
+IF the patient mentions symptoms of Anxiety (nervous, edge, worry) OR Depression (down, lost interest):
+- Create a "QuestionnaireResponse" resource.
+- Set "questionnaire" to "Questionnaire/bb1ece1d-7116-49d9-a082-86262208b517" (The ID of the PHQ-4 form).
+- Extract answers based on the transcript using these EXACT linkIds:
+  - Anxiety Q1 (Nervous/Edge) -> linkId: "/69725-0"
+  - Anxiety Q2 (Worrying)     -> linkId: "/68509-9"
+  - Depression Q3 (Interest)  -> linkId: "/44250-9"
+  - Depression Q4 (Hopeless)  -> linkId: "/44255-8"
+- For the answer values, you MUST use valueCoding from this list:
+  - "Not at all" (Code: LA6568-5)
+  - "Several days" (Code: LA6569-3)
+  - "More than half the days" (Code: LA6570-1)
+  - "Nearly every day" (Code: LA6571-9)
+
+EXAMPLE QUESTIONNAIRE OUTPUT:
+{
+  "type": "questionnaire_response",
+  "description": "Auto-filled PHQ-4 Mental Health Screen",
+  "resource": {
+    "resourceType": "QuestionnaireResponse",
+    "status": "completed",
+    "questionnaire": "Questionnaire/bb1ece1d-7116-49d9-a082-86262208b517",
+    "item": [
+      {
+        "linkId": "/69725-0",
+        "answer": [{ "valueCoding": { "code": "LA6569-3", "display": "Several days" } }]
+      }
+      // ... other items
+    ]
+  }
+}
 
 Extract ONLY clinically actionable items:
 - Medications/prescriptions
@@ -208,7 +242,7 @@ export async function POST(request: NextRequest) {
         console.warn('[Analyze] Skipping invalid action:', action);
         return false;
       }
-      if (!['medication', 'lab', 'imaging', 'referral', 'followup'].includes(action.type)) {
+      if (!['medication', 'lab', 'imaging', 'referral', 'followup', 'questionnaire_response'].includes(action.type)) {
         console.warn('[Analyze] Skipping action with invalid type:', action.type);
         return false;
       }
