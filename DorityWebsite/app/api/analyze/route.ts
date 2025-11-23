@@ -13,9 +13,11 @@ interface AnalyzeRequest {
 }
 
 interface ClinicalActionResponse {
-  type: 'medication' | 'lab' | 'imaging' | 'referral' | 'followup';
+  type: 'medication' | 'lab' | 'imaging' | 'referral' | 'followup' | 'scheduling';
   description: string;
   resource: MedicationRequest | ServiceRequest | any;
+  reason?: string;
+  when?: string;
 }
 
 interface AnalyzeResponse {
@@ -32,8 +34,18 @@ CRITICAL RULES:
 3. For each action, generate a Draft FHIR Resource:
    - MedicationRequest for medications/prescriptions
    - ServiceRequest for labs, imaging, referrals
+   - Appointment for follow-ups and scheduling
 4. Include a human-readable "description" for UI display
-5. Categorize each action with a "type": "medication", "lab", "imaging", "referral", or "followup"
+5. Categorize each action with a "type": "medication", "lab", "imaging", "referral", "followup", or "scheduling"
+
+TYPE DEFINITIONS:
+- "medication": Prescriptions and drug orders
+- "lab": Laboratory tests
+- "imaging": Radiology/Imaging studies
+- "referral": Referrals to other specialists
+- "followup": Clinical follow-up appointments within the EMR (e.g. "See patient in 2 weeks")
+- "scheduling": Administrative meeting requests or external coordination that requires sending an email (e.g. "Schedule a meeting to discuss surgery options"). 
+   - For "scheduling" actions, YOU MUST INCLUDE "reason" and "when" fields in the action object.
 
 OUTPUT FORMAT (raw JSON only):
 {
@@ -72,28 +84,15 @@ OUTPUT FORMAT (raw JSON only):
       }
     },
     {
-      "type": "lab",
-      "description": "Order Complete Blood Count (CBC)",
+      "type": "scheduling",
+      "description": "Schedule a meeting to review surgical options",
+      "reason": "Patient requested detailed discussion about surgical risks and benefits",
+      "when": "Next Tuesday afternoon",
       "resource": {
-        "resourceType": "ServiceRequest",
-        "status": "draft",
-        "intent": "order",
-        "category": [{
-          "coding": [{
-            "system": "http://snomed.info/sct",
-            "code": "108252007",
-            "display": "Laboratory procedure"
-          }]
-        }],
-        "code": {
-          "coding": [{
-            "system": "http://loinc.org",
-            "code": "58410-2",
-            "display": "Complete blood count (hemogram) panel"
-          }],
-          "text": "CBC"
-        },
-        "priority": "routine"
+        "resourceType": "Appointment",
+        "status": "proposed",
+        "description": "Meeting to review surgical options",
+        "start": "2023-11-28T14:00:00Z" 
       }
     }
   ]
@@ -113,6 +112,7 @@ Extract ONLY clinically actionable items:
 - Imaging studies
 - Specialist referrals
 - Follow-up appointments
+- Scheduling/Administrative meetings
 
 Do NOT extract:
 - General advice or counseling
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
         console.warn('[Analyze] Skipping invalid action:', action);
         return false;
       }
-      if (!['medication', 'lab', 'imaging', 'referral', 'followup'].includes(action.type)) {
+      if (!['medication', 'lab', 'imaging', 'referral', 'followup', 'scheduling'].includes(action.type)) {
         console.warn('[Analyze] Skipping action with invalid type:', action.type);
         return false;
       }
