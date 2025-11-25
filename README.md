@@ -1,6 +1,3 @@
-### Deployed URL
-
-https://heidi-hackss-deployed.vercel.app/
 
 # Clinical Action Layer
 
@@ -161,10 +158,10 @@ Step 4 (After-care)
 ## Data Flow
 
 1. **Ingest:** Patient selected + Transcript entered (✅ Implemented with mock data)
-2. **Process:** Transcript → Claude → FHIR resources (🚧 TODO: Real AI integration)
+2. **Process:** Transcript → Claude → FHIR resources (✅ Implemented)
 3. **Review:** Display Action Cards with approval workflow (✅ Implemented)
-4. **Execute:** Approved actions → Medplum (🚧 TODO: Real FHIR creation)
-5. **Follow-up:** Generate + send after-care email (🚧 TODO: Real email service)
+4. **Execute:** Approved actions → Medplum (✅ Implemented)
+5. **Follow-up:** Generate + send after-care email (✅ Implemented)
 
 ## Development Guidelines
 
@@ -196,7 +193,6 @@ Step 4 (After-care)
   - `isGenerating`: Loading state for AI generation
   - `updateAction`: Update specific action
 
-## Integration Points (TODO)
 
 ### 🔌 Medplum FHIR Backend
 - **Location:** `PatientSearchPanel.tsx` line 54
